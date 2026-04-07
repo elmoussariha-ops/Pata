@@ -39,6 +39,21 @@ struct OpenLoop {
     detail: String,
 }
 
+#[derive(Debug, Clone)]
+struct FailureMemory {
+    id: String,
+    ts: u64,
+    objective: String,
+    command: String,
+    failure_type: String,
+    scope: String,
+    error: String,
+    probable_cause: String,
+    avoid_pattern: String,
+    recommendation: String,
+    promote_lesson: String,
+}
+
 fn mem_root(root: &Path) -> PathBuf {
     root.join(".pata/memory")
 }
@@ -272,6 +287,39 @@ fn now_ts() -> Result<u64, String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())
         .map(|d| d.as_secs())
+}
+
+fn infer_failure_cause(msg: &str) -> (&'static str, &'static str, &'static str) {
+    let m = msg.to_lowercase();
+    if m.contains("clippy") || m.contains("warning") {
+        (
+            "lint_non_conformité",
+            "ignorer les warnings avant apply",
+            "ajouter check+clippy strict dans la boucle patch",
+        )
+    } else if m.contains("test") || m.contains("failed") {
+        (
+            "régression_fonctionnelle",
+            "patch sans couverture tests",
+            "isoler module impacté puis retester ciblé avant validate global",
+        )
+    } else if m.contains("git apply") || m.contains("hunk") {
+        (
+            "patch_désaligné",
+            "patch généré sur contexte obsolète",
+            "rescanner puis régénérer patch sur état courant",
+        )
+    } else {
+        (
+            "erreur_outillage_ou_logique",
+            "enchaîner patch/apply sans diagnostic",
+            "lancer retrieve ciblé + plan prudent + validate complet",
+        )
+    }
+}
+
+fn failures_path(root: &Path) -> PathBuf {
+    mem_root(root).join("failures.tsv")
 }
 
 pub fn summarize_session(root: &Path) -> Result<SessionSummary, String> {
@@ -640,6 +688,8 @@ pub fn render_view(root: &Path, view: &str) -> String {
                 .unwrap_or_else(|_| format!("weekly summary missing for {week}"))
         }
         "digest" => render_digest(root),
+        "failures" => render_failures(root, false),
+        "failure-recent" => render_failures(root, true),
         _ => "unknown memory view".to_string(),
     }
 }
@@ -695,8 +745,13 @@ pub fn render_digest(root: &Path) -> String {
         .collect::<Vec<_>>()
         .join(" | ");
     let recent = render_recent(root);
+    let failure_recent = render_failures(root, true)
+        .lines()
+        .next()
+        .unwrap_or("none")
+        .to_string();
     format!(
-        "digest_open={open}\ndigest_lessons={lesson_top}\ndigest_recent={}\ndigest_watch={}\n",
+        "digest_open={open}\ndigest_lessons={lesson_top}\ndigest_recent={}\ndigest_watch={}\ndigest_failure={failure_recent}\n",
         recent
             .lines()
             .find(|l| l.starts_with("patches="))
@@ -706,6 +761,142 @@ pub fn render_digest(root: &Path) -> String {
             .find(|l| l.starts_with("last_validate_errors="))
             .unwrap_or("last_validate_errors=none")
     )
+}
+
+pub fn record_failure(
+    root: &Path,
+    objective: &str,
+    command: &str,
+    failure_type: &str,
+    scope: &str,
+    error: &str,
+) -> Result<String, String> {
+    let _guard = lock::acquire(root, "memory-failure")?;
+    fs::create_dir_all(mem_root(root)).map_err(|e| e.to_string())?;
+    fssec::set_secure_dir(&mem_root(root))?;
+    let ts = now_ts()?;
+    let id = format!("fm-{ts}");
+    let (cause, avoid, reco) = infer_failure_cause(error);
+    let promote = if failure_type.contains("validate") || failure_type.contains("apply") {
+        "yes"
+    } else {
+        "maybe"
+    };
+    let row = FailureMemory {
+        id: id.clone(),
+        ts,
+        objective: sanitize(objective),
+        command: sanitize(command),
+        failure_type: sanitize(failure_type),
+        scope: sanitize(scope),
+        error: sanitize(error),
+        probable_cause: cause.to_string(),
+        avoid_pattern: avoid.to_string(),
+        recommendation: reco.to_string(),
+        promote_lesson: promote.to_string(),
+    };
+    let mut cur = fs::read_to_string(failures_path(root)).unwrap_or_default();
+    cur.push_str(&format!(
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+        row.id,
+        row.ts,
+        row.objective,
+        row.command,
+        row.failure_type,
+        row.scope,
+        row.error,
+        row.probable_cause,
+        row.avoid_pattern,
+        row.recommendation,
+        row.promote_lesson
+    ));
+    fs::write(failures_path(root), cur).map_err(|e| e.to_string())?;
+    fssec::set_secure_file(&failures_path(root))?;
+    Ok(id)
+}
+
+fn load_failures(root: &Path) -> Vec<FailureMemory> {
+    fs::read_to_string(failures_path(root))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let c = l.split('\t').collect::<Vec<_>>();
+            if c.len() < 11 {
+                return None;
+            }
+            Some(FailureMemory {
+                id: c[0].to_string(),
+                ts: c[1].parse().unwrap_or(0),
+                objective: c[2].to_string(),
+                command: c[3].to_string(),
+                failure_type: c[4].to_string(),
+                scope: c[5].to_string(),
+                error: c[6].to_string(),
+                probable_cause: c[7].to_string(),
+                avoid_pattern: c[8].to_string(),
+                recommendation: c[9].to_string(),
+                promote_lesson: c[10].to_string(),
+            })
+        })
+        .collect()
+}
+
+pub fn render_failures(root: &Path, recent_only: bool) -> String {
+    let mut rows = load_failures(root);
+    rows.sort_by(|a, b| b.ts.cmp(&a.ts));
+    if recent_only {
+        rows.truncate(5);
+    }
+    if rows.is_empty() {
+        return "failures empty".to_string();
+    }
+    rows.into_iter()
+        .map(|r| {
+            format!(
+                "{} ts={} type={} cmd={} scope={} cause={} avoid={} reco={} err={}",
+                r.id,
+                r.ts,
+                r.failure_type,
+                r.command,
+                r.scope,
+                r.probable_cause,
+                r.avoid_pattern,
+                r.recommendation,
+                r.error
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn promote_failure(root: &Path, id: &str) -> Result<(), String> {
+    let row = load_failures(root)
+        .into_iter()
+        .find(|r| r.id == id)
+        .ok_or_else(|| format!("failure not found: {id}"))?;
+    add_lesson(
+        root,
+        "failure-promoted",
+        &format!(
+            "from={} cause={} avoid={} reco={} scope={}",
+            row.id, row.probable_cause, row.avoid_pattern, row.recommendation, row.scope
+        ),
+    )
+}
+
+pub fn explain_open_loop_priority(root: &Path, id: &str) -> String {
+    let row = load_open_loops(root).into_iter().find(|x| x.id == id);
+    match row {
+        Some(r) => format!(
+            "open-loop {} priority=p{} impact={} module={} age_days={} reason=category+detail heuristics",
+            r.id,
+            r.priority,
+            r.impact,
+            r.module,
+            age_days(now_ts().unwrap_or(r.updated_ts), r.created_ts)
+        ),
+        None => format!("open-loop {id} not found"),
+    }
 }
 
 fn age_days(now_ts: u64, created_ts: u64) -> u64 {
@@ -918,5 +1109,31 @@ mod tests {
         let v = render_open_loops(&root, "priority");
         let first = v.lines().next().unwrap_or_default();
         assert!(first.contains("p5"));
+    }
+
+    #[test]
+    fn failure_memory_roundtrip_and_promote() {
+        let root = std::env::temp_dir().join(format!(
+            "pata-long-memory-failure-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let id = record_failure(
+            &root,
+            "fix scanner",
+            "validate",
+            "validation_failed",
+            "src/scanner.rs",
+            "test failed",
+        )
+        .unwrap();
+        let txt = render_failures(&root, false);
+        assert!(txt.contains("validation_failed"));
+        promote_failure(&root, &id).unwrap();
+        let lessons = render_view(&root, "lessons");
+        assert!(lessons.contains("failure-promoted"));
     }
 }

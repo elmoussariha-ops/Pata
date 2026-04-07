@@ -24,9 +24,11 @@ cargo test --offline || cargo test
 ```bash
 cargo run -- scan
 cargo run -- retrieve "scanner"
+cargo run -- retrieve "scanner" --explain-retrieval
 cargo run -- plan "fix scanner"
 cargo run -- patch "fix scanner"
 cargo run -- review patch-<id>
+cargo run -- review patch-<id> --explain-risk
 cargo run -- approve patch-<id> "manual-approved"
 cargo run -- apply patch-<id>
 cargo run -- validate
@@ -40,6 +42,10 @@ cargo run -- memory open-loops --priority
 cargo run -- memory open-loops --recent
 cargo run -- memory lessons
 cargo run -- memory digest
+cargo run -- memory failures
+cargo run -- memory failure-recent
+cargo run -- memory promote-failure fm-<ts>
+cargo run -- memory explain-open-loop ol-<ts>
 cargo run -- memory add-open-loop bug "panic scanner sur gros repo" 5 src/scanner.rs critical
 cargo run -- memory resolve-open-loop ol-<ts>
 cargo run -- memory add-lesson retrieval "booster modules touchés récemment"
@@ -48,6 +54,7 @@ cargo run -- --verbose smoke-test
 cargo run -- --verbose ollama-status
 cargo run -- low-power-status
 cargo run -- tui
+cargo run -- watch 30
 ```
 
 ## Mode low-power (MacBook Air M4)

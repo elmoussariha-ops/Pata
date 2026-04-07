@@ -83,10 +83,22 @@ fn run() -> Result<(), String> {
 
     match cmd.as_str() {
         "scan" => command_scan(&root),
-        "retrieve" => command_retrieve(&root, rest.first().cloned().unwrap_or_default(), low_power),
+        "retrieve" => {
+            let explain = rest.iter().any(|x| x == "--explain-retrieval");
+            let query = rest
+                .iter()
+                .find(|x| !x.starts_with("--"))
+                .cloned()
+                .unwrap_or_default();
+            command_retrieve(&root, query, low_power, explain)
+        }
         "plan" => command_plan(&root, rest.first().cloned().unwrap_or_else(|| "improve rust quality".to_string()), low_power),
         "patch" => command_patch(&root, rest.first().cloned().unwrap_or_else(|| "fix rust".to_string()), low_power),
-        "review" => command_review(rest.first().map(|s| s.as_str())),
+        "review" => {
+            let explain = rest.iter().any(|x| x == "--explain-risk");
+            let id = rest.iter().find(|x| !x.starts_with("--")).map(|s| s.as_str());
+            command_review(&root, id, explain)
+        }
         "approve" => command_approve(&root, rest.first().map(|s| s.as_str()), rest.get(1).map(|s| s.as_str()).unwrap_or("manual-approved")),
         "apply" => command_apply(&root, rest.first().map(|s| s.as_str())),
         "validate" => command_validate(&root),
@@ -94,6 +106,7 @@ fn run() -> Result<(), String> {
         "end-session" | "daily-summary" => command_end_session(&root),
         "resume-session" => command_resume_session(&root),
         "memory" => command_memory(&root, &rest),
+        "watch" => command_watch(&root, rest.first().and_then(|s| s.parse::<u32>().ok()).unwrap_or(30), low_power),
         "doctor" => command_doctor(&root, low_power, verbose),
         "smoke-test" => command_smoke_test(&root, low_power, verbose),
         "low-power-status" => command_low_power_status(low_power),
@@ -102,7 +115,7 @@ fn run() -> Result<(), String> {
         "model-status" => command_model_status(),
         "demo" => command_demo(&root, low_power),
         "tui" => command_tui(&root, low_power),
-        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q>|plan <goal>|patch <goal>|review <id>|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
+        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q> [--explain-retrieval]|plan <goal>|patch <goal>|review <id> [--explain-risk]|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|watch [cycles]|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|failures|failure-recent|promote-failure <id>|explain-open-loop <id>|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
     }
 }
 
@@ -185,7 +198,12 @@ fn command_scan(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn command_retrieve(root: &Path, query: String, low_power: bool) -> Result<(), String> {
+fn command_retrieve(
+    root: &Path,
+    query: String,
+    low_power: bool,
+    explain: bool,
+) -> Result<(), String> {
     let query = bounded_arg(query, MAX_QUERY_LEN)?;
     let idx = scanner::scan_repo(root)?;
     let hits = retriever::top_n(
@@ -209,6 +227,11 @@ fn command_retrieve(root: &Path, query: String, low_power: bool) -> Result<(), S
     }
     if !retrieval_boosts.is_empty() {
         println!("memory_boosts={}", retrieval_boosts.join(" | "));
+    }
+    if explain {
+        println!(
+            "explain_retrieval=score_base+boost_recent+boost_open_loops+boost_lessons_fragile"
+        );
     }
     for h in hits {
         println!("- {} (score={})", h.path.display(), h.score);
@@ -294,18 +317,20 @@ fn command_patch(root: &Path, objective: String, low_power: bool) -> Result<(), 
     Ok(())
 }
 
-fn command_review(id: Option<&str>) -> Result<(), String> {
+fn command_review(root: &Path, id: Option<&str>, explain: bool) -> Result<(), String> {
     let patch_id = id.map(ToString::to_string).unwrap_or(latest_patch_id()?);
     let proposal = patcher::load(&patch_id)?;
     let review = reviewer::review(&proposal, &PROTECTED_PATHS);
     let mut review = review;
-    let root = env::current_dir().map_err(|e| e.to_string())?;
-    long_memory::adjust_review_with_memory(&root, &mut review);
+    long_memory::adjust_review_with_memory(root, &mut review);
     patcher::save_review(&patch_id, &review)?;
     println!("review id={patch_id}");
     println!("summary: {}", review.summary);
     println!("risk={} allowed={}", review.risk.score, review.risk.allowed);
     println!("recommendation={}", review.risk.recommendation);
+    if explain {
+        println!("explain_risk=base_reviewer_risk + memory_fragile_modules + memory_validation_priority + recurring_error_penalty");
+    }
     Ok(())
 }
 
@@ -383,6 +408,21 @@ fn command_memory(root: &Path, rest: &[String]) -> Result<(), String> {
             history::log(root, "lesson_add", &format!("category={category}"))?;
             Ok(())
         }
+        "promote-failure" => {
+            let id = rest
+                .get(1)
+                .ok_or_else(|| "missing failure id".to_string())?;
+            long_memory::promote_failure(root, id)?;
+            println!("failure promoted: {id}");
+            Ok(())
+        }
+        "explain-open-loop" => {
+            let id = rest
+                .get(1)
+                .ok_or_else(|| "missing open-loop id".to_string())?;
+            println!("{}", long_memory::explain_open_loop_priority(root, id));
+            Ok(())
+        }
         "open-loops" => {
             let mode = if rest.iter().any(|x| x == "--priority") {
                 "priority"
@@ -394,12 +434,89 @@ fn command_memory(root: &Path, rest: &[String]) -> Result<(), String> {
             println!("{}", long_memory::render_open_loops(root, mode));
             Ok(())
         }
-        "show" | "recent" | "lessons" | "daily" | "weekly" | "digest" => {
+        "show" | "recent" | "lessons" | "daily" | "weekly" | "digest" | "failures"
+        | "failure-recent" => {
             println!("{}", long_memory::render_view(root, sub));
             Ok(())
         }
         _ => Err("unknown memory command".to_string()),
     }
+}
+
+fn command_watch(root: &Path, cycles: u32, low_power: bool) -> Result<(), String> {
+    let mut known = std::collections::BTreeMap::<PathBuf, u64>::new();
+    let mut sleep_ms: u64 = if low_power { 2200 } else { 1200 };
+    if cycles > 120 {
+        sleep_ms = sleep_ms.saturating_add(800);
+    }
+    println!("watch start: cycles={cycles} low_power={low_power}");
+    for i in 0..cycles {
+        let idx = scanner::scan_repo(root)?;
+        let mut changed = Vec::new();
+        for f in &idx.file_summaries {
+            if !f.path.to_string_lossy().ends_with(".rs") {
+                continue;
+            }
+            let mtime = memory_engine::file_mtime_sec(&root.join(&f.path)).unwrap_or(0);
+            let old = known.insert(f.path.clone(), mtime);
+            if let Some(prev) = old {
+                if mtime > prev {
+                    changed.push(f.path.clone());
+                }
+            }
+        }
+        if !changed.is_empty() {
+            let focus = changed
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut hits = retriever::top_n(
+                &idx,
+                &focus,
+                retrieval_limit(low_power, 4),
+                &idx.workspace_root,
+            );
+            let boosts = long_memory::rerank_retrieval(root, &focus, &mut hits);
+            println!(
+                "watch change-detected cycle={} files={}",
+                i + 1,
+                changed.len()
+            );
+            println!(
+                "watch changed={}",
+                changed
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            );
+            if let Some(top) = hits.first() {
+                println!(
+                    "watch retrieval_top={} score={}",
+                    top.path.display(),
+                    top.score
+                );
+            }
+            if !boosts.is_empty() {
+                println!("watch memory_boosts={}", boosts.join(" | "));
+            }
+            let hints = long_memory::planner_hints(root, &focus);
+            if !hints.is_empty() {
+                println!("watch suggestion_ready={}", hints.join(" | "));
+            } else {
+                println!("watch suggestion_ready=scan/retrieve refreshed");
+            }
+            history::log(
+                root,
+                "watch_change",
+                &format!("changed={} top_hit={}", changed.len(), hits.len()),
+            )?;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+    }
+    println!("watch complete");
+    Ok(())
 }
 
 fn command_apply(root: &Path, id: Option<&str>) -> Result<(), String> {
@@ -410,6 +527,14 @@ fn command_apply(root: &Path, id: Option<&str>) -> Result<(), String> {
 
     rollback::checkpoint(root, &format!("pata-pre-apply-{patch_id}"))?;
     if let Err(e) = patcher::apply(root, &proposal) {
+        let _ = long_memory::record_failure(
+            root,
+            &proposal.objective,
+            "apply",
+            "apply_failed",
+            &patch_id,
+            &e,
+        );
         rollback::rollback(root, "HEAD~1")?;
         history::log(
             root,
@@ -422,6 +547,14 @@ fn command_apply(root: &Path, id: Option<&str>) -> Result<(), String> {
     let report = tester::validate(root);
     memory_engine::cache_validation_errors(root, &report)?;
     if !report.ok() {
+        let _ = long_memory::record_failure(
+            root,
+            &proposal.objective,
+            "validate-after-apply",
+            "validation_failed_after_apply",
+            &patch_id,
+            &report.logs.join(" | "),
+        );
         rollback::rollback(root, "HEAD~1")?;
         history::log(
             root,
@@ -452,6 +585,14 @@ fn command_validate(root: &Path) -> Result<(), String> {
     );
     history::log(root, "validate", &format!("ok={}", report.ok()))?;
     if !report.ok() {
+        let _ = long_memory::record_failure(
+            root,
+            "manual validate",
+            "validate",
+            "validation_failed",
+            "workspace",
+            &report.logs.join(" | "),
+        );
         let _ = state_store::write_last_warning(root, "validate failed");
     }
     Ok(())
@@ -596,7 +737,7 @@ fn command_model_status() -> Result<(), String> {
 fn command_demo(root: &Path, low_power: bool) -> Result<(), String> {
     let objective = "refactor scanner";
     command_scan(root)?;
-    command_retrieve(root, objective.to_string(), low_power)?;
+    command_retrieve(root, objective.to_string(), low_power, false)?;
     command_plan(root, objective.to_string(), low_power)?;
 
     let idx = scanner::scan_repo(root)?;
