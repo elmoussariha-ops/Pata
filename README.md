@@ -31,6 +31,15 @@ cargo run -- approve patch-<id> "manual-approved"
 cargo run -- apply patch-<id>
 cargo run -- validate
 cargo run -- status
+cargo run -- resume-session
+cargo run -- end-session
+cargo run -- memory show
+cargo run -- memory recent
+cargo run -- memory open-loops
+cargo run -- memory lessons
+cargo run -- memory add-open-loop bug "panic scanner sur gros repo"
+cargo run -- memory resolve-open-loop ol-<ts>
+cargo run -- memory add-lesson retrieval "booster modules touchés récemment"
 cargo run -- --verbose doctor
 cargo run -- --verbose smoke-test
 cargo run -- --verbose ollama-status
@@ -111,3 +120,11 @@ cargo run -- status
 - `last_ollama_diagnostic.txt`
 - `last_status.txt`
 - `last_warning.txt`
+
+## Mémoire longue durée locale (.pata/memory)
+- `daily/YYYY-MM-DD.txt` : résumés de session/journée append-only
+- `weekly/YYYY-Www.txt` : consolidation hebdomadaire légère
+- `project_compact.txt` : snapshot compact du projet (open loops, lessons, patchs récents)
+- `open_loops.tsv` : backlog explicite des tâches ouvertes/fermées
+- `lessons.tsv` : leçons apprises structurées par catégorie
+- `sessions.log` : index des sessions résumées pour reprise ciblée

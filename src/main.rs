@@ -3,6 +3,7 @@ mod fssec;
 mod history;
 mod json;
 mod lock;
+mod long_memory;
 mod memory_engine;
 mod model;
 mod optimizer;
@@ -86,10 +87,13 @@ fn run() -> Result<(), String> {
         "plan" => command_plan(&root, rest.first().cloned().unwrap_or_else(|| "improve rust quality".to_string()), low_power),
         "patch" => command_patch(&root, rest.first().cloned().unwrap_or_else(|| "fix rust".to_string()), low_power),
         "review" => command_review(rest.first().map(|s| s.as_str())),
-        "approve" => command_approve(rest.first().map(|s| s.as_str()), rest.get(1).map(|s| s.as_str()).unwrap_or("manual-approved")),
+        "approve" => command_approve(&root, rest.first().map(|s| s.as_str()), rest.get(1).map(|s| s.as_str()).unwrap_or("manual-approved")),
         "apply" => command_apply(&root, rest.first().map(|s| s.as_str())),
         "validate" => command_validate(&root),
         "status" => command_status(&root, low_power),
+        "end-session" | "daily-summary" => command_end_session(&root),
+        "resume-session" => command_resume_session(&root),
+        "memory" => command_memory(&root, &rest),
         "doctor" => command_doctor(&root, low_power, verbose),
         "smoke-test" => command_smoke_test(&root, low_power, verbose),
         "low-power-status" => command_low_power_status(low_power),
@@ -98,7 +102,7 @@ fn run() -> Result<(), String> {
         "model-status" => command_model_status(),
         "demo" => command_demo(&root, low_power),
         "tui" => command_tui(&root, low_power),
-        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q>|plan <goal>|patch <goal>|review <id>|approve <id> [decision]|apply <id>|validate|status|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
+        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q>|plan <goal>|patch <goal>|review <id>|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|memory <show|recent|open-loops|lessons|daily|weekly|add-open-loop <category> <detail>|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
     }
 }
 
@@ -190,6 +194,7 @@ fn command_retrieve(root: &Path, query: String, low_power: bool) -> Result<(), S
         retrieval_limit(low_power, 6),
         &idx.workspace_root,
     );
+    let recent_modules = long_memory::recent_modules(root, 8);
     memory_engine::write_retrieval_snapshot(root, &query, &hits)?;
     history::log(
         root,
@@ -197,6 +202,9 @@ fn command_retrieve(root: &Path, query: String, low_power: bool) -> Result<(), S
         &format!("query='{query}' hits={} low_power={low_power}", hits.len()),
     )?;
     println!("retrieve query='{query}' hits={}", hits.len());
+    if !recent_modules.is_empty() {
+        println!("memory_recent_modules={}", recent_modules.join(" | "));
+    }
     for h in hits {
         println!("- {} (score={})", h.path.display(), h.score);
     }
@@ -288,12 +296,83 @@ fn command_review(id: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn command_approve(id: Option<&str>, decision: &str) -> Result<(), String> {
+fn command_approve(root: &Path, id: Option<&str>, decision: &str) -> Result<(), String> {
     let patch_id = id.map(ToString::to_string).unwrap_or(latest_patch_id()?);
     let approval_path = patcher::approve(&patch_id, decision)?;
+    history::log(
+        root,
+        "approve",
+        &format!("patch={patch_id} decision={decision}"),
+    )?;
     println!("approved patch {patch_id}");
     println!("approval file: {}", approval_path.display());
     Ok(())
+}
+
+fn command_end_session(root: &Path) -> Result<(), String> {
+    let summary = long_memory::summarize_session(root)?;
+    long_memory::persist_summary(root, &summary)?;
+    println!("end-session summary for {} ({})", summary.day, summary.week);
+    println!("objectives={}", summary.objectives.join(" | "));
+    println!("files_touched={}", summary.files_touched.join(" | "));
+    println!("patches_created={}", summary.patches_created.join(" | "));
+    println!("patches_applied={}", summary.patches_applied.join(" | "));
+    println!("validations={}", summary.validations);
+    println!("errors={}", summary.errors.join(" | "));
+    println!("decisions={}", summary.decisions.join(" | "));
+    println!("critical_modules={}", summary.critical_modules.join(" | "));
+    println!("open_tasks={}", summary.open_tasks.join(" | "));
+    println!("recommendations={}", summary.recommendations.join(" | "));
+    history::log(
+        root,
+        "end_session",
+        &format!("day={} week={}", summary.day, summary.week),
+    )?;
+    Ok(())
+}
+
+fn command_resume_session(root: &Path) -> Result<(), String> {
+    let text = long_memory::render_recent(root);
+    println!("{text}");
+    history::log(root, "resume_session", "loaded compact memory context")
+}
+
+fn command_memory(root: &Path, rest: &[String]) -> Result<(), String> {
+    let sub = rest.first().map(String::as_str).unwrap_or("show");
+    match sub {
+        "add-open-loop" => {
+            let category = rest.get(1).ok_or_else(|| "missing category".to_string())?;
+            let detail = rest.get(2).ok_or_else(|| "missing detail".to_string())?;
+            let id = long_memory::add_open_loop(root, category, detail)?;
+            println!("open loop added: {id}");
+            history::log(
+                root,
+                "open_loop_add",
+                &format!("id={id} category={category}"),
+            )?;
+            Ok(())
+        }
+        "resolve-open-loop" => {
+            let id = rest.get(1).ok_or_else(|| "missing id".to_string())?;
+            long_memory::resolve_open_loop(root, id)?;
+            println!("open loop resolved: {id}");
+            history::log(root, "open_loop_resolve", &format!("id={id}"))?;
+            Ok(())
+        }
+        "add-lesson" => {
+            let category = rest.get(1).ok_or_else(|| "missing category".to_string())?;
+            let detail = rest.get(2).ok_or_else(|| "missing detail".to_string())?;
+            long_memory::add_lesson(root, category, detail)?;
+            println!("lesson added: {category}");
+            history::log(root, "lesson_add", &format!("category={category}"))?;
+            Ok(())
+        }
+        "show" | "recent" | "open-loops" | "lessons" | "daily" | "weekly" => {
+            println!("{}", long_memory::render_view(root, sub));
+            Ok(())
+        }
+        _ => Err("unknown memory command".to_string()),
+    }
 }
 
 fn command_apply(root: &Path, id: Option<&str>) -> Result<(), String> {
