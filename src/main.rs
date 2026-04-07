@@ -102,7 +102,7 @@ fn run() -> Result<(), String> {
         "model-status" => command_model_status(),
         "demo" => command_demo(&root, low_power),
         "tui" => command_tui(&root, low_power),
-        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q>|plan <goal>|patch <goal>|review <id>|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|memory <show|recent|open-loops|lessons|daily|weekly|add-open-loop <category> <detail>|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
+        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q>|plan <goal>|patch <goal>|review <id>|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
     }
 }
 
@@ -194,6 +194,8 @@ fn command_retrieve(root: &Path, query: String, low_power: bool) -> Result<(), S
         retrieval_limit(low_power, 6),
         &idx.workspace_root,
     );
+    let mut hits = hits;
+    let retrieval_boosts = long_memory::rerank_retrieval(root, &query, &mut hits);
     let recent_modules = long_memory::recent_modules(root, 8);
     memory_engine::write_retrieval_snapshot(root, &query, &hits)?;
     history::log(
@@ -204,6 +206,9 @@ fn command_retrieve(root: &Path, query: String, low_power: bool) -> Result<(), S
     println!("retrieve query='{query}' hits={}", hits.len());
     if !recent_modules.is_empty() {
         println!("memory_recent_modules={}", recent_modules.join(" | "));
+    }
+    if !retrieval_boosts.is_empty() {
+        println!("memory_boosts={}", retrieval_boosts.join(" | "));
     }
     for h in hits {
         println!("- {} (score={})", h.path.display(), h.score);
@@ -224,6 +229,9 @@ fn command_plan(root: &Path, objective: String, low_power: bool) -> Result<(), S
     println!("plan objective='{objective}'");
     for step in &plan {
         println!("- {step}");
+    }
+    for hint in long_memory::planner_hints(root, &objective) {
+        println!("- {hint}");
     }
     memory_engine::append_task_event(root, "plan", &plan.join(" | "))?;
     history::log(root, "plan", &objective)?;
@@ -252,6 +260,8 @@ fn command_patch(root: &Path, objective: String, low_power: bool) -> Result<(), 
     )?;
 
     let review = reviewer::review(&proposal, &PROTECTED_PATHS);
+    let mut review = review;
+    long_memory::adjust_review_with_memory(root, &mut review);
     patcher::save_review(&proposal.id, &review)?;
     memory_engine::append_patch_history(root, &proposal.id, review.risk.score)?;
 
@@ -288,6 +298,9 @@ fn command_review(id: Option<&str>) -> Result<(), String> {
     let patch_id = id.map(ToString::to_string).unwrap_or(latest_patch_id()?);
     let proposal = patcher::load(&patch_id)?;
     let review = reviewer::review(&proposal, &PROTECTED_PATHS);
+    let mut review = review;
+    let root = env::current_dir().map_err(|e| e.to_string())?;
+    long_memory::adjust_review_with_memory(&root, &mut review);
     patcher::save_review(&patch_id, &review)?;
     println!("review id={patch_id}");
     println!("summary: {}", review.summary);
@@ -343,7 +356,10 @@ fn command_memory(root: &Path, rest: &[String]) -> Result<(), String> {
         "add-open-loop" => {
             let category = rest.get(1).ok_or_else(|| "missing category".to_string())?;
             let detail = rest.get(2).ok_or_else(|| "missing detail".to_string())?;
-            let id = long_memory::add_open_loop(root, category, detail)?;
+            let priority = rest.get(3).and_then(|v| v.parse::<u8>().ok());
+            let module = rest.get(4).map(String::as_str);
+            let impact = rest.get(5).map(String::as_str);
+            let id = long_memory::add_open_loop(root, category, detail, priority, module, impact)?;
             println!("open loop added: {id}");
             history::log(
                 root,
@@ -367,7 +383,18 @@ fn command_memory(root: &Path, rest: &[String]) -> Result<(), String> {
             history::log(root, "lesson_add", &format!("category={category}"))?;
             Ok(())
         }
-        "show" | "recent" | "open-loops" | "lessons" | "daily" | "weekly" => {
+        "open-loops" => {
+            let mode = if rest.iter().any(|x| x == "--priority") {
+                "priority"
+            } else if rest.iter().any(|x| x == "--recent") {
+                "recent"
+            } else {
+                "default"
+            };
+            println!("{}", long_memory::render_open_loops(root, mode));
+            Ok(())
+        }
+        "show" | "recent" | "lessons" | "daily" | "weekly" | "digest" => {
             println!("{}", long_memory::render_view(root, sub));
             Ok(())
         }

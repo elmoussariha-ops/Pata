@@ -1,5 +1,6 @@
 use crate::fssec;
 use crate::lock;
+use crate::types::{PatchReview, RetrievalHit};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,20 @@ pub struct SessionSummary {
     pub critical_modules: Vec<String>,
     pub open_tasks: Vec<String>,
     pub recommendations: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct OpenLoop {
+    id: String,
+    category: String,
+    status: String,
+    priority: u8,
+    impact: String,
+    module: String,
+    created_ts: u64,
+    updated_ts: u64,
+    last_event: String,
+    detail: String,
 }
 
 fn mem_root(root: &Path) -> PathBuf {
@@ -91,19 +106,38 @@ fn load_session_cutoff(root: &Path) -> u64 {
         .unwrap_or(0)
 }
 
-fn load_open_loops(root: &Path) -> Vec<(String, String, String, String)> {
+fn load_open_loops(root: &Path) -> Vec<OpenLoop> {
     let p = mem_root(root).join("open_loops.tsv");
     let txt = fs::read_to_string(p).unwrap_or_default();
     txt.lines()
         .filter_map(|l| {
             let cols = l.split('\t').collect::<Vec<_>>();
-            if cols.len() == 4 {
-                Some((
-                    cols[0].to_string(),
-                    cols[1].to_string(),
-                    cols[2].to_string(),
-                    cols[3].to_string(),
-                ))
+            if cols.len() >= 10 {
+                Some(OpenLoop {
+                    id: cols[0].to_string(),
+                    category: cols[1].to_string(),
+                    status: cols[2].to_string(),
+                    priority: cols[3].parse::<u8>().unwrap_or(3).clamp(1, 5),
+                    impact: cols[4].to_string(),
+                    module: cols[5].to_string(),
+                    created_ts: cols[6].parse::<u64>().unwrap_or(0),
+                    updated_ts: cols[7].parse::<u64>().unwrap_or(0),
+                    last_event: cols[8].to_string(),
+                    detail: cols[9].to_string(),
+                })
+            } else if cols.len() == 4 {
+                Some(OpenLoop {
+                    id: cols[0].to_string(),
+                    category: cols[1].to_string(),
+                    status: cols[2].to_string(),
+                    priority: infer_priority(cols[1], cols[3]),
+                    impact: infer_impact(cols[1], cols[3]).to_string(),
+                    module: infer_module(cols[3]),
+                    created_ts: 0,
+                    updated_ts: 0,
+                    last_event: "legacy-import".to_string(),
+                    detail: cols[3].to_string(),
+                })
             } else {
                 None
             }
@@ -111,13 +145,70 @@ fn load_open_loops(root: &Path) -> Vec<(String, String, String, String)> {
         .collect()
 }
 
-pub fn add_open_loop(root: &Path, category: &str, text: &str) -> Result<String, String> {
+fn infer_priority(category: &str, detail: &str) -> u8 {
+    let s = format!("{} {}", category.to_lowercase(), detail.to_lowercase());
+    if s.contains("critical") || s.contains("urgent") {
+        5
+    } else if s.contains("bug") || s.contains("incident") {
+        4
+    } else if s.contains("dette") || s.contains("debt") {
+        3
+    } else if s.contains("refactor") {
+        2
+    } else {
+        1
+    }
+}
+
+fn infer_impact(category: &str, detail: &str) -> &'static str {
+    let p = infer_priority(category, detail);
+    if p >= 5 {
+        "critical"
+    } else if p >= 4 {
+        "high"
+    } else if p >= 3 {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+fn infer_module(detail: &str) -> String {
+    detail
+        .split_whitespace()
+        .find(|w| w.contains('/') || w.ends_with(".rs"))
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+pub fn add_open_loop(
+    root: &Path,
+    category: &str,
+    text: &str,
+    priority: Option<u8>,
+    module: Option<&str>,
+    impact: Option<&str>,
+) -> Result<String, String> {
     let _guard = lock::acquire(root, "memory-open-loop")?;
     fs::create_dir_all(mem_root(root)).map_err(|e| e.to_string())?;
     fssec::set_secure_dir(&mem_root(root))?;
     let ts = now_ts()?;
     let id = format!("ol-{ts}");
-    let line = format!("{id}\t{}\topen\t{}\n", sanitize(category), sanitize(text));
+    let p = priority
+        .unwrap_or_else(|| infer_priority(category, text))
+        .clamp(1, 5);
+    let detected_module = module.map(sanitize).unwrap_or_else(|| infer_module(text));
+    let imp = impact
+        .map(sanitize)
+        .unwrap_or_else(|| infer_impact(category, text).to_string());
+    let line = format!(
+        "{id}\t{}\topen\t{}\t{}\t{}\t{ts}\t{ts}\tcreated\t{}\n",
+        sanitize(category),
+        p,
+        imp,
+        sanitize(&detected_module),
+        sanitize(text)
+    );
     let p = mem_root(root).join("open_loops.tsv");
     let mut cur = fs::read_to_string(&p).unwrap_or_default();
     cur.push_str(&line);
@@ -131,14 +222,26 @@ pub fn resolve_open_loop(root: &Path, id: &str) -> Result<(), String> {
     let rows = load_open_loops(root);
     let mut out = String::new();
     let mut found = false;
-    for (rid, category, status, detail) in rows {
-        let next_status = if rid == id {
+    for mut row in rows {
+        if row.id == id {
             found = true;
-            "closed"
-        } else {
-            &status
-        };
-        out.push_str(&format!("{rid}\t{category}\t{next_status}\t{detail}\n"));
+            row.status = "closed".to_string();
+            row.updated_ts = now_ts().unwrap_or(row.updated_ts);
+            row.last_event = "resolved".to_string();
+        }
+        out.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            row.id,
+            row.category,
+            row.status,
+            row.priority,
+            row.impact,
+            row.module,
+            row.created_ts,
+            row.updated_ts,
+            row.last_event,
+            row.detail
+        ));
     }
     if !found {
         return Err(format!("open loop not found: {id}"));
@@ -250,8 +353,13 @@ pub fn summarize_session(root: &Path) -> Result<SessionSummary, String> {
 
     let open_tasks = load_open_loops(root)
         .into_iter()
-        .filter(|(_, _, status, _)| status == "open")
-        .map(|(id, cat, _, detail)| format!("{id}:{cat}:{detail}"))
+        .filter(|x| x.status == "open")
+        .map(|x| {
+            format!(
+                "{}:{}:p{}:{}:{}",
+                x.id, x.category, x.priority, x.module, x.detail
+            )
+        })
         .collect::<Vec<_>>();
 
     let mut recommendations = Vec::new();
@@ -312,9 +420,21 @@ fn summary_to_text(s: &SessionSummary) -> String {
         format!("critical_modules={}", s.critical_modules.join(" | ")),
         format!("open_tasks={}", s.open_tasks.join(" | ")),
         format!("recommendations={}", s.recommendations.join(" | ")),
+        format!("fingerprint={}", summary_fingerprint(s)),
     ]
     .join("\n")
         + "\n"
+}
+
+fn summary_fingerprint(s: &SessionSummary) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        s.objectives.join("|"),
+        s.files_touched.join("|"),
+        s.patches_created.join("|"),
+        s.open_tasks.join("|"),
+        s.recommendations.join("|")
+    )
 }
 
 pub fn persist_summary(root: &Path, summary: &SessionSummary) -> Result<(), String> {
@@ -333,14 +453,18 @@ pub fn persist_summary(root: &Path, summary: &SessionSummary) -> Result<(), Stri
         .join("weekly")
         .join(format!("{}.txt", summary.week));
     let mut dcur = fs::read_to_string(&daily).unwrap_or_default();
-    dcur.push_str("---\n");
-    dcur.push_str(&text);
+    if !dcur.contains(&format!("fingerprint={}", summary_fingerprint(summary))) {
+        dcur.push_str("---\n");
+        dcur.push_str(&text);
+    }
     fs::write(&daily, dcur).map_err(|e| e.to_string())?;
     fssec::set_secure_file(&daily)?;
 
     let mut wcur = fs::read_to_string(&weekly).unwrap_or_default();
-    wcur.push_str("---\n");
-    wcur.push_str(&text);
+    if !wcur.contains(&format!("fingerprint={}", summary_fingerprint(summary))) {
+        wcur.push_str("---\n");
+        wcur.push_str(&text);
+    }
     fs::write(&weekly, wcur).map_err(|e| e.to_string())?;
     fssec::set_secure_file(&weekly)?;
 
@@ -386,9 +510,9 @@ fn build_project_compact(root: &Path) -> Result<String, String> {
         .collect::<Vec<_>>();
 
     let mut by_category: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, cat, status, _) in &loops {
-        if status == "open" {
-            *by_category.entry(cat.clone()).or_insert(0) += 1;
+    for l in &loops {
+        if l.status == "open" {
+            *by_category.entry(l.category.clone()).or_insert(0) += 1;
         }
     }
 
@@ -405,7 +529,7 @@ fn build_project_compact(root: &Path) -> Result<String, String> {
     txt.push_str("project_memory_compact=1\n");
     txt.push_str(&format!(
         "open_loops_total={}\n",
-        loops.iter().filter(|x| x.2 == "open").count()
+        loops.iter().filter(|x| x.status == "open").count()
     ));
     txt.push_str(&format!(
         "open_loops_by_category={}\n",
@@ -428,9 +552,14 @@ pub fn render_recent(root: &Path) -> String {
 
     let open = load_open_loops(root)
         .into_iter()
-        .filter(|(_, _, status, _)| status == "open")
+        .filter(|x| x.status == "open")
         .take(8)
-        .map(|(id, cat, _, d)| format!("{id} [{cat}] {d}"))
+        .map(|x| {
+            format!(
+                "{} [{}|p{}|{}] {}",
+                x.id, x.category, x.priority, x.module, x.detail
+            )
+        })
         .collect::<Vec<_>>();
     out.push_str(&format!("open_loops={}\n", open.join(" | ")));
 
@@ -495,8 +624,7 @@ pub fn render_view(root: &Path, view: &str) -> String {
         "show" => fs::read_to_string(mem_root(root).join("project_compact.txt"))
             .unwrap_or_else(|_| "memory unavailable".to_string()),
         "recent" => render_recent(root),
-        "open-loops" => fs::read_to_string(mem_root(root).join("open_loops.tsv"))
-            .unwrap_or_else(|_| "open loops empty".to_string()),
+        "open-loops" => render_open_loops(root, "default"),
         "lessons" => fs::read_to_string(mem_root(root).join("lessons.tsv"))
             .unwrap_or_else(|_| "lessons empty".to_string()),
         "daily" => {
@@ -511,7 +639,80 @@ pub fn render_view(root: &Path, view: &str) -> String {
             fs::read_to_string(mem_root(root).join("weekly").join(format!("{week}.txt")))
                 .unwrap_or_else(|_| format!("weekly summary missing for {week}"))
         }
+        "digest" => render_digest(root),
         _ => "unknown memory view".to_string(),
+    }
+}
+
+pub fn render_open_loops(root: &Path, mode: &str) -> String {
+    let mut loops = load_open_loops(root)
+        .into_iter()
+        .filter(|x| x.status == "open")
+        .collect::<Vec<_>>();
+    match mode {
+        "priority" => loops.sort_by(|a, b| {
+            b.priority
+                .cmp(&a.priority)
+                .then(b.updated_ts.cmp(&a.updated_ts))
+        }),
+        "recent" => loops.sort_by(|a, b| b.updated_ts.cmp(&a.updated_ts)),
+        _ => loops.sort_by(|a, b| a.id.cmp(&b.id)),
+    }
+    if loops.is_empty() {
+        return "open loops empty".to_string();
+    }
+    let mut out = String::new();
+    for l in loops {
+        out.push_str(&format!(
+            "{}\t{}\tp{}\t{}\tmodule={}\tage_days={}\tlast_event={}\t{}\n",
+            l.id,
+            l.category,
+            l.priority,
+            l.impact,
+            l.module,
+            age_days(now_ts().unwrap_or(l.updated_ts), l.created_ts),
+            l.last_event,
+            l.detail
+        ));
+    }
+    out
+}
+
+pub fn render_digest(root: &Path) -> String {
+    let open = render_open_loops(root, "priority")
+        .lines()
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let lessons = fs::read_to_string(mem_root(root).join("lessons.tsv")).unwrap_or_default();
+    let lesson_top = lessons
+        .lines()
+        .rev()
+        .take(5)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let recent = render_recent(root);
+    format!(
+        "digest_open={open}\ndigest_lessons={lesson_top}\ndigest_recent={}\ndigest_watch={}\n",
+        recent
+            .lines()
+            .find(|l| l.starts_with("patches="))
+            .unwrap_or("patches=none"),
+        recent
+            .lines()
+            .find(|l| l.starts_with("last_validate_errors="))
+            .unwrap_or("last_validate_errors=none")
+    )
+}
+
+fn age_days(now_ts: u64, created_ts: u64) -> u64 {
+    if created_ts == 0 || now_ts <= created_ts {
+        0
+    } else {
+        (now_ts - created_ts) / 86_400
     }
 }
 
@@ -527,6 +728,149 @@ pub fn recent_modules(root: &Path, n: usize) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MemorySignals {
+    pub fragile_modules: Vec<String>,
+    pub strict_validation_modules: Vec<String>,
+    pub recurring_error_patterns: Vec<String>,
+}
+
+pub fn collect_signals(root: &Path) -> MemorySignals {
+    let lessons = fs::read_to_string(mem_root(root).join("lessons.tsv")).unwrap_or_default();
+    let mut sig = MemorySignals::default();
+    for line in lessons.lines().rev().take(80) {
+        let cols = line.split('\t').collect::<Vec<_>>();
+        if cols.len() < 3 {
+            continue;
+        }
+        let category = cols[1].to_lowercase();
+        let detail = cols[2].to_lowercase();
+        if category.contains("fragile") || detail.contains("fragile") {
+            sig.fragile_modules.push(infer_module(cols[2]));
+        }
+        if category.contains("validation") || detail.contains("validate") {
+            sig.strict_validation_modules.push(infer_module(cols[2]));
+        }
+        if category.contains("error") || detail.contains("error") || detail.contains("failed") {
+            sig.recurring_error_patterns.push(cols[2].to_string());
+        }
+    }
+    sig.fragile_modules.sort();
+    sig.fragile_modules.dedup();
+    sig.strict_validation_modules.sort();
+    sig.strict_validation_modules.dedup();
+    sig
+}
+
+pub fn planner_hints(root: &Path, objective: &str) -> Vec<String> {
+    let sig = collect_signals(root);
+    let obj = objective.to_lowercase();
+    let mut hints = Vec::new();
+    for m in sig.fragile_modules.iter().take(3) {
+        if m != "unknown" && obj.contains(&m.to_lowercase()) {
+            hints.push(format!(
+                "memory: module fragile détecté ({m}), planifier validate renforcé"
+            ));
+        }
+    }
+    if !sig.recurring_error_patterns.is_empty() {
+        hints.push(
+            "memory: erreurs récurrentes connues, prévoir check+clippy+test avant apply"
+                .to_string(),
+        );
+    }
+    hints
+}
+
+pub fn adjust_review_with_memory(root: &Path, review: &mut PatchReview) {
+    let sig = collect_signals(root);
+    let mut bump = 0u8;
+    for f in &review.files {
+        if sig
+            .fragile_modules
+            .iter()
+            .any(|m| !m.is_empty() && m != "unknown" && f.contains(m))
+        {
+            bump = bump.saturating_add(7);
+            review
+                .risk
+                .reasons
+                .push(format!("memory: module fragile {f}"));
+        }
+        if sig
+            .strict_validation_modules
+            .iter()
+            .any(|m| !m.is_empty() && m != "unknown" && f.contains(m))
+        {
+            bump = bump.saturating_add(5);
+            review
+                .risk
+                .reasons
+                .push(format!("memory: validation prioritaire {f}"));
+        }
+    }
+    if !sig.recurring_error_patterns.is_empty() {
+        bump = bump.saturating_add(3);
+        review
+            .risk
+            .reasons
+            .push("memory: historique d'erreurs récurrentes".to_string());
+    }
+    if bump > 0 {
+        review.risk.score = review.risk.score.saturating_add(bump);
+        review.risk.allowed = review.risk.score < 70 && review.risk.critical_files.is_empty();
+    }
+}
+
+pub fn rerank_retrieval(root: &Path, query: &str, hits: &mut [RetrievalHit]) -> Vec<String> {
+    let recent = recent_modules(root, 12);
+    let loops = load_open_loops(root)
+        .into_iter()
+        .filter(|x| x.status == "open")
+        .collect::<Vec<_>>();
+    let sig = collect_signals(root);
+    let mut explanation = Vec::new();
+    let q = query.to_lowercase();
+    for h in hits.iter_mut() {
+        let p = h.path.display().to_string();
+        let mut delta = 0usize;
+        if recent.iter().any(|m| !m.is_empty() && p.contains(m)) {
+            delta += 4;
+        }
+        if loops
+            .iter()
+            .any(|l| l.module != "unknown" && p.contains(&l.module))
+        {
+            delta += 5;
+        }
+        if loops
+            .iter()
+            .any(|l| l.detail.to_lowercase().contains(&q) || l.category.to_lowercase().contains(&q))
+        {
+            delta += 2;
+        }
+        if sig
+            .fragile_modules
+            .iter()
+            .any(|m| m != "unknown" && p.contains(m))
+        {
+            delta += 3;
+        }
+        h.score = h.score.saturating_add(delta);
+    }
+    hits.sort_by(|a, b| b.score.cmp(&a.score));
+    if !recent.is_empty() {
+        explanation.push("boost: modules récemment touchés".to_string());
+    }
+    if !loops.is_empty() {
+        explanation.push("boost: open loops actifs".to_string());
+    }
+    if !sig.fragile_modules.is_empty() {
+        explanation.push("boost: lessons modules fragiles".to_string());
+    }
+    explanation
 }
 
 #[cfg(test)]
@@ -550,11 +894,29 @@ mod tests {
                 .as_nanos()
         ));
         fs::create_dir_all(&root).unwrap();
-        let id = add_open_loop(&root, "bug", "corriger panic scanner").unwrap();
+        let id =
+            add_open_loop(&root, "bug", "corriger panic scanner", Some(4), None, None).unwrap();
         let txt = render_view(&root, "open-loops");
         assert!(txt.contains("corriger panic scanner"));
         resolve_open_loop(&root, &id).unwrap();
         let txt2 = render_view(&root, "open-loops");
-        assert!(txt2.contains("closed"));
+        assert!(!txt2.contains("corriger panic scanner"));
+    }
+
+    #[test]
+    fn open_loops_priority_view_orders_high_first() {
+        let root = std::env::temp_dir().join(format!(
+            "pata-long-memory-prio-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let _ = add_open_loop(&root, "task", "doc update", Some(1), None, None).unwrap();
+        let _ = add_open_loop(&root, "critical", "panic src/main.rs", Some(5), None, None).unwrap();
+        let v = render_open_loops(&root, "priority");
+        let first = v.lines().next().unwrap_or_default();
+        assert!(first.contains("p5"));
     }
 }

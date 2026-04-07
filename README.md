@@ -36,8 +36,11 @@ cargo run -- end-session
 cargo run -- memory show
 cargo run -- memory recent
 cargo run -- memory open-loops
+cargo run -- memory open-loops --priority
+cargo run -- memory open-loops --recent
 cargo run -- memory lessons
-cargo run -- memory add-open-loop bug "panic scanner sur gros repo"
+cargo run -- memory digest
+cargo run -- memory add-open-loop bug "panic scanner sur gros repo" 5 src/scanner.rs critical
 cargo run -- memory resolve-open-loop ol-<ts>
 cargo run -- memory add-lesson retrieval "booster modules touchés récemment"
 cargo run -- --verbose doctor
