@@ -1,3 +1,4 @@
+mod ast_fingerprint;
 mod coder;
 mod fssec;
 mod history;
@@ -6,6 +7,7 @@ mod lock;
 mod long_memory;
 mod memory_engine;
 mod model;
+mod multiverse;
 mod optimizer;
 mod patcher;
 mod planner;
@@ -107,6 +109,13 @@ fn run() -> Result<(), String> {
         "resume-session" => command_resume_session(&root),
         "memory" => command_memory(&root, &rest),
         "watch" => command_watch(&root, rest.first().and_then(|s| s.parse::<u32>().ok()).unwrap_or(30), low_power),
+        "multiverse" => command_multiverse(
+            &root,
+            rest.first().cloned().unwrap_or_else(|| "improve rust reliability".to_string()),
+            rest.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(3),
+            low_power,
+        ),
+        "ast-fingerprint" => command_ast_fingerprint(&root, rest.first().map(|s| s.as_str())),
         "doctor" => command_doctor(&root, low_power, verbose),
         "smoke-test" => command_smoke_test(&root, low_power, verbose),
         "low-power-status" => command_low_power_status(low_power),
@@ -115,7 +124,7 @@ fn run() -> Result<(), String> {
         "model-status" => command_model_status(),
         "demo" => command_demo(&root, low_power),
         "tui" => command_tui(&root, low_power),
-        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q> [--explain-retrieval]|plan <goal>|patch <goal>|review <id> [--explain-risk]|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|watch [cycles]|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|failures|failure-recent|promote-failure <id>|explain-open-loop <id>|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
+        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q> [--explain-retrieval]|plan <goal>|patch <goal>|review <id> [--explain-risk]|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|watch [cycles]|multiverse <goal> [2-4]|ast-fingerprint [function_name]|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|failures|failure-recent|promote-failure <id>|explain-open-loop <id>|similar-functions <fn_name>|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
     }
 }
 
@@ -232,6 +241,19 @@ fn command_retrieve(
         println!(
             "explain_retrieval=score_base+boost_recent+boost_open_loops+boost_lessons_fragile"
         );
+    }
+    if query.split_whitespace().count() == 1 {
+        let similar = ast_fingerprint::similar_functions(root, &query, 3);
+        if !similar.is_empty() {
+            println!(
+                "memory_similar_functions={}",
+                similar
+                    .iter()
+                    .map(|(f, d)| format!("{}::{}(d={})", f.path.display(), f.name, d))
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            );
+        }
     }
     for h in hits {
         println!("- {} (score={})", h.path.display(), h.score);
@@ -423,6 +445,27 @@ fn command_memory(root: &Path, rest: &[String]) -> Result<(), String> {
             println!("{}", long_memory::explain_open_loop_priority(root, id));
             Ok(())
         }
+        "similar-functions" => {
+            let name = rest
+                .get(1)
+                .ok_or_else(|| "missing function name".to_string())?;
+            let sims = ast_fingerprint::similar_functions(root, name, 8);
+            if sims.is_empty() {
+                println!("similar-functions empty for {name}");
+            } else {
+                for (f, d) in sims {
+                    println!(
+                        "{}\t{}\targs={}\tcontrol={}\tdistance={}",
+                        f.path.display(),
+                        f.name,
+                        f.args,
+                        f.control_score,
+                        d
+                    );
+                }
+            }
+            Ok(())
+        }
         "open-loops" => {
             let mode = if rest.iter().any(|x| x == "--priority") {
                 "priority"
@@ -466,6 +509,10 @@ fn command_watch(root: &Path, cycles: u32, low_power: bool) -> Result<(), String
             }
         }
         if !changed.is_empty() {
+            if let Ok(fp) = ast_fingerprint::build_index(root) {
+                let _ = ast_fingerprint::persist_index(root, &fp);
+                println!("watch ast_fingerprint_functions={}", fp.len());
+            }
             let focus = changed
                 .iter()
                 .map(|p| p.display().to_string())
@@ -516,6 +563,71 @@ fn command_watch(root: &Path, cycles: u32, low_power: bool) -> Result<(), String
         std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
     }
     println!("watch complete");
+    Ok(())
+}
+
+fn command_multiverse(
+    root: &Path,
+    objective: String,
+    branches: usize,
+    low_power: bool,
+) -> Result<(), String> {
+    let objective = bounded_arg(objective, MAX_OBJECTIVE_LEN)?;
+    let results = multiverse::run_multiverse(root, &objective, low_power, branches)?;
+    println!(
+        "multiverse objective='{objective}' branches={} (sorted by score)",
+        results.len()
+    );
+    for r in &results {
+        println!(
+            "- {}: patch={} apply_check={} check={} test={} risk={} diff_lines={} score={} note={}",
+            r.strategy,
+            r.patch_id,
+            r.apply_check_ok,
+            r.check_ok,
+            r.test_ok,
+            r.risk,
+            r.diff_lines,
+            r.score,
+            r.note
+        );
+    }
+    if let Some(best) = results.first() {
+        println!(
+            "survivante choisie: {} ({}) score={}",
+            best.strategy, best.patch_id, best.score
+        );
+    }
+    history::log(
+        root,
+        "multiverse",
+        &format!("objective='{objective}' branches={}", results.len()),
+    )?;
+    Ok(())
+}
+
+fn command_ast_fingerprint(root: &Path, function_name: Option<&str>) -> Result<(), String> {
+    let idx = ast_fingerprint::build_index(root)?;
+    ast_fingerprint::persist_index(root, &idx)?;
+    println!("ast-fingerprint indexed_functions={}", idx.len());
+    if let Some(name) = function_name {
+        let sims = ast_fingerprint::similar_functions(root, name, 8);
+        if sims.is_empty() {
+            println!("similar-functions none for '{name}'");
+        } else {
+            println!("similar-functions for '{name}':");
+            for (f, d) in sims {
+                println!(
+                    "- {}::{} args={} control={} distance={}",
+                    f.path.display(),
+                    f.name,
+                    f.args,
+                    f.control_score,
+                    d
+                );
+            }
+        }
+    }
     Ok(())
 }
 

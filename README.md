@@ -25,6 +25,9 @@ cargo test --offline || cargo test
 cargo run -- scan
 cargo run -- retrieve "scanner"
 cargo run -- retrieve "scanner" --explain-retrieval
+cargo run -- multiverse "stabiliser scanner" 3
+cargo run -- ast-fingerprint
+cargo run -- ast-fingerprint command_retrieve
 cargo run -- plan "fix scanner"
 cargo run -- patch "fix scanner"
 cargo run -- review patch-<id>
@@ -46,6 +49,7 @@ cargo run -- memory failures
 cargo run -- memory failure-recent
 cargo run -- memory promote-failure fm-<ts>
 cargo run -- memory explain-open-loop ol-<ts>
+cargo run -- memory similar-functions command_retrieve
 cargo run -- memory add-open-loop bug "panic scanner sur gros repo" 5 src/scanner.rs critical
 cargo run -- memory resolve-open-loop ol-<ts>
 cargo run -- memory add-lesson retrieval "booster modules touchés récemment"

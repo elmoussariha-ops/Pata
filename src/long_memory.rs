@@ -750,8 +750,12 @@ pub fn render_digest(root: &Path) -> String {
         .next()
         .unwrap_or("none")
         .to_string();
+    let fingerprint_count = fs::read_to_string(mem_root(root).join("function_fingerprints.tsv"))
+        .unwrap_or_default()
+        .lines()
+        .count();
     format!(
-        "digest_open={open}\ndigest_lessons={lesson_top}\ndigest_recent={}\ndigest_watch={}\ndigest_failure={failure_recent}\n",
+        "digest_open={open}\ndigest_lessons={lesson_top}\ndigest_recent={}\ndigest_watch={}\ndigest_failure={failure_recent}\ndigest_ast_functions={fingerprint_count}\n",
         recent
             .lines()
             .find(|l| l.starts_with("patches="))
