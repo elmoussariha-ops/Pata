@@ -1,0 +1,36 @@
+[workspace]
+members = [
+  "crates/agent-traits",
+  "crates/agent-core",
+  "crates/agent-memory",
+  "crates/agent-reasoning",
+  "crates/cli",
+  "crates/persona-developer",
+  "crates/persona-personal",
+  "crates/persona-smb",
+  "crates/persona-registry",
+  "crates/persona-teacher",
+  "crates/server",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+authors = ["Pata Contributors"]
+repository = "https://github.com/example/pata"
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["serde", "v4"] }
+clap = { version = "4", features = ["derive"] }
+axum = "0.7"
+toml = "0.8"
+tower = "0.5"

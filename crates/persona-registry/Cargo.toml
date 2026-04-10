@@ -1,0 +1,14 @@
+[package]
+name = "persona-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+agent-traits = { path = "../agent-traits" }
+persona-developer = { path = "../persona-developer" }
+persona-personal = { path = "../persona-personal" }
+persona-smb = { path = "../persona-smb" }
+persona-teacher = { path = "../persona-teacher" }

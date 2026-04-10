@@ -1,0 +1,22 @@
+title: "Architecture feedback"
+labels:
+  - architecture
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share architectural feedback on modularity, contracts, and boundaries.
+  - type: textarea
+    id: focus
+    attributes:
+      label: Focus area
+      description: Which layer/crate is concerned?
+    validations:
+      required: true
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation
+      description: What concrete change do you suggest?
+    validations:
+      required: true
