@@ -6,8 +6,8 @@ use agent_memory::{
     RetrievalIntent, RetrievalQuery,
 };
 use agent_reasoning::{
-    CorrectionDecision, DurableRuleChecker, GlobalDecision, GlobalReasoningVerifier,
-    ReasoningExecution, ReasoningPhase, ReasoningPlan, ReasoningStep, StepResult,
+    DurableRuleChecker, GlobalDecision, GlobalReasoningVerifier, ReasoningExecution,
+    ReasoningPhase, ReasoningPlan, ReasoningStep, StepResult,
 };
 use agent_traits::{
     Agent, AgentEvent, AgentResult, ExecutionContext, ModelProvider, Persona, Tool, ToolCall,
@@ -488,43 +488,70 @@ where
             },
         )?;
 
-        for step in &plan.steps {
-            trace.push(
-                EventLevel::Info,
-                PipelineEventType::ReasoningStepExecuted,
-                format!("executing step {:?}", step.phase),
-            );
-            let prompt = format!(
-                "Goal: {goal}\nPersona: {}\nStep: {:?}\nStep objective: {}\nExpected artifact: {}\nMemory context: {:?}",
-                self.persona.name(),
-                step.phase,
-                step.goal,
-                step.expected_artifact,
-                retrieved_context
-            );
+        const MAX_LOCAL_RETRIES: usize = 2;
+        'steps: for step in &plan.steps {
+            let mut attempt = 0usize;
+            let mut correction_feedback: Option<String> = None;
 
-            let output = self
-                .model
-                .complete(&self.persona.system_prompt(), &prompt, &context)
-                .await?;
+            loop {
+                trace.push(
+                    EventLevel::Info,
+                    PipelineEventType::ReasoningStepExecuted,
+                    format!(
+                        "executing step {:?} (attempt {}/{})",
+                        step.phase,
+                        attempt + 1,
+                        MAX_LOCAL_RETRIES + 1
+                    ),
+                );
+                let prompt = format!(
+                    "Goal: {goal}\nPersona: {}\nStep: {:?}\nStep objective: {}\nExpected artifact: {}\nMemory context: {:?}\nCorrection feedback: {}",
+                    self.persona.name(),
+                    step.phase,
+                    step.goal,
+                    step.expected_artifact,
+                    retrieved_context,
+                    correction_feedback
+                        .clone()
+                        .unwrap_or_else(|| "none".to_string())
+                );
 
-            let verification =
-                execution.verify_and_push(StepResult::succeeded(step.phase, output))?;
-            trace.push(
-                EventLevel::Info,
-                PipelineEventType::LocalVerificationCompleted,
-                format!(
-                    "local verification for {:?}: passed={}",
-                    step.phase, verification.passed
-                ),
-            );
-            if !verification.passed {
+                let output = self
+                    .model
+                    .complete(&self.persona.system_prompt(), &prompt, &context)
+                    .await?;
+
+                let verification =
+                    execution.verify_and_push(StepResult::succeeded(step.phase, output))?;
+                trace.push(
+                    EventLevel::Info,
+                    PipelineEventType::LocalVerificationCompleted,
+                    format!(
+                        "local verification for {:?} attempt {}: passed={}",
+                        step.phase,
+                        attempt + 1,
+                        verification.passed
+                    ),
+                );
+                if verification.passed {
+                    break;
+                }
+
                 trace.push(
                     EventLevel::Warning,
                     PipelineEventType::CorrectionDecisionIssued,
                     format!("decision: {:?}", verification.decision),
                 );
-                break;
+
+                if attempt >= MAX_LOCAL_RETRIES {
+                    break 'steps;
+                }
+
+                attempt += 1;
+                correction_feedback = verification
+                    .failure
+                    .as_ref()
+                    .map(|failure| format!("{:?} - {}", failure.kind, failure.message));
             }
         }
 
