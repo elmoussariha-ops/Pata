@@ -1,0 +1,22 @@
+title: "Benchmark discussion"
+labels:
+  - benchmark
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Discuss benchmark methodology, interpretation, and reproducibility.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What benchmark context are you discussing?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Provide numbers, logs, links, or report excerpts.
+    validations:
+      required: true

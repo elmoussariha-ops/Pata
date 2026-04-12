@@ -1,0 +1,22 @@
+title: "Use case ideas"
+labels:
+  - use-case
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Propose practical scenarios where Pata personas or architecture could help.
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario
+      description: Describe the real use case.
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: Persona/platform fit
+      description: Which persona(s) fit today and what is missing?
+    validations:
+      required: true
