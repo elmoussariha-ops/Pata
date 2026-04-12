@@ -5,43 +5,64 @@
 ![Status](https://img.shields.io/badge/Status-V2%20Launch%20Prep-6f42c1)
 ![Personas](https://img.shields.io/badge/Personas-4-success)
 
+## 🚀 Build specialized agents you can actually inspect, verify, and iterate
+
 **Tagline:** _Rust-first platform for specialized, verifiable AI agents._
 
-Plateforme **Rust-first** pour construire des agents IA spécialisés, fiables et observables.
-
-Pata is an open-source Rust platform that combines:
+Pata is an open-source Rust platform for teams who want more than generic agent wrappers:
 - persona specialization,
 - structured reasoning,
 - explicit verification,
 - execution observability,
-- and deterministic evaluation.
+- deterministic evaluation.
 
-It is designed for teams who want **more than generic agent wrappers**: a modular base for building credible specialized agents.
+**Current state (honest):** V2 foundation is in public validation. Runtime integrations are intentionally minimal.
 
-> 📌 Pour contribuer ou suivre la direction du projet:
-> - [Understand the project in 5 minutes](PRODUCT_OVERVIEW.md)
-> - [Visual architecture overview](VISUAL_OVERVIEW.md)
-> - [Guide de contribution](CONTRIBUTING.md)
-> - [Roadmap publique](ROADMAP.md)
-> - [Index docs](docs/README.md)
-> - [Launch note V2](docs/launch_v2.md)
-> - [Public launch pack](docs/public_launch_pack.md)
-> - [Demo comparative multi-persona](examples/multi_persona_demo.md)
-> - [Quickstart flagship demo](quickstart/flagship-demo/QUICKSTART.md)
-> - [Public comparison benchmarks](benchmarks/public-comparison/BENCHMARKS.md)
-> - [Help shape V3 (public feedback)](PUBLIC_FEEDBACK.md)
-> - [Use case proofs](USE_CASE_PROOFS.md)
-> - [Launch visibility pack](LAUNCH_VISIBILITY.md)
+### Start here (best first impression)
 
-**Statut du dépôt**: _V2 product phase_ (plateforme multi-personas spécialisée, runtime encore minimal).
+- 👉 **Comparative showcase first:** [`examples/multi_persona_demo.md`](examples/multi_persona_demo.md)
+- ⚡ **Flagship quickstart:** [`quickstart/flagship-demo/QUICKSTART.md`](quickstart/flagship-demo/QUICKSTART.md)
+- 📊 **Benchmark method/report:** [`benchmarks/public-comparison/BENCHMARKS.md`](benchmarks/public-comparison/BENCHMARKS.md)
+- 🧭 **5-minute product view:** [`PRODUCT_OVERVIEW.md`](PRODUCT_OVERVIEW.md)
 
-## New here? Start with the 5-minute product overview
+### Why developers should star this repo
 
-👉 [`PRODUCT_OVERVIEW.md`](PRODUCT_OVERVIEW.md)
+If this repository is useful to you, starring helps in very concrete ways:
+- it increases visibility for a Rust-first, verifiable-agent approach,
+- it helps attract high-signal contributors and reviewers,
+- it accelerates external feedback loops that improve reliability,
+- it signals demand for transparent agent architecture over black-box demos.
 
-## Prefer diagrams first? Use the visual overview
+### What makes this project different
 
-👉 [`VISUAL_OVERVIEW.md`](VISUAL_OVERVIEW.md)
+- **Persona-first contracts**, not one generic prompt path.
+- **Reasoning + verification pipeline** as explicit runtime structure.
+- **Traceable execution outputs** (summary + trace) for auditability.
+- **Deterministic evaluation path** focused on reproducibility.
+- **Clear “implemented vs next” boundaries** to avoid overclaiming.
+
+### Social proof / momentum (early phase)
+
+We are currently in an **early external validation window**:
+- first technical discussions are starting,
+- launch artifacts are live and shareable,
+- feedback and signal capture loops are in place.
+
+No traction numbers are claimed in this README. Public signals are tracked in:
+- [`POST_LAUNCH_SIGNAL_LOG.md`](POST_LAUNCH_SIGNAL_LOG.md)
+- [`PUBLIC_SIGNAL_TRACKER.md`](PUBLIC_SIGNAL_TRACKER.md)
+
+### Road to V3 (what’s next)
+
+Near-term priority is **traction + adoption learning**, not feature inflation:
+- convert visitors into real trials (quickstart + benchmark),
+- capture first external friction points,
+- prioritize roadmap moves only with observed evidence.
+
+References:
+- [`LIVE_LAUNCH_CHECKLIST.md`](LIVE_LAUNCH_CHECKLIST.md)
+- [`REAL_LAUNCH_EXECUTION.md`](REAL_LAUNCH_EXECUTION.md)
+- [`V4_TRANSITION.md`](V4_TRANSITION.md)
 
 ## Launch snapshot (V2)
 
@@ -51,20 +72,6 @@ Pata is currently a **serious launch-ready foundation**, not a finished enterpri
 - ✅ Deterministic runtime surfaces (CLI + HTTP server).
 - ✅ Observable orchestrated pipeline (memory → reasoning → verification → evaluation).
 - ⚠️ Deliberately minimal runtime integrations (no enterprise multi-tenant/persistence stack yet).
-
-## Why this project / Pourquoi ce projet est différent
-
-Pata ne vise pas un simple “wrapper LLM”.
-Le dépôt est structuré pour combiner, dès les premières briques :
-
-- **spécialisation par persona** (ex: `persona-developer`, `persona-teacher`, `persona-personal`, `persona-smb`)
-- **registry de personas** pour découverte et sélection runtime propres
-- **raisonnement structuré et vérifiable** (single-branch, déterministe)
-- **mémoire multi-couches** (court terme, résumés, apprentissage, permanent)
-- **observabilité native** (trace d’exécution + résumé)
-- **évaluation qualité déterministe** (sans juge externe)
-
-Objectif: devenir une base open source crédible pour des agents IA spécialisés en Rust.
 
 ## Demo comparative (à voir en premier)
 
