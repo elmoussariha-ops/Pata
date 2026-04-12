@@ -6,8 +6,8 @@ use agent_memory::{
     RetrievalIntent, RetrievalQuery,
 };
 use agent_reasoning::{
-    CorrectionDecision, DurableRuleChecker, GlobalDecision, GlobalReasoningVerifier,
-    ReasoningExecution, ReasoningPhase, ReasoningPlan, ReasoningStep, StepResult,
+    DurableRuleChecker, GlobalDecision, GlobalReasoningVerifier, ReasoningExecution,
+    ReasoningPhase, ReasoningPlan, ReasoningStep, StepResult,
 };
 use agent_traits::{
     Agent, AgentEvent, AgentResult, ExecutionContext, ModelProvider, Persona, Tool, ToolCall,
@@ -33,6 +33,9 @@ pub enum PipelineEventType {
     ReasoningPlanPrepared,
     ReasoningStepExecuted,
     LocalVerificationCompleted,
+    CorrectionAttemptStarted,
+    CorrectionAttemptSucceeded,
+    CorrectionAttemptFailed,
     GlobalVerificationCompleted,
     CorrectionDecisionIssued,
     FinalResultProduced,
@@ -62,6 +65,15 @@ pub struct ExecutionSummary {
     pub reasoning_steps_executed: usize,
     pub local_verifications: usize,
     pub global_failures: Vec<String>,
+}
+
+/// One correction attempt recorded during local retry handling.
+#[derive(Debug, Clone, Serialize)]
+pub struct CorrectionAttemptRecord {
+    pub phase: String,
+    pub attempt_number: usize,
+    pub previous_failure_reason: String,
+    pub succeeded: bool,
 }
 
 /// Quality dimensions used for deterministic pipeline evaluation.
@@ -488,43 +500,120 @@ where
             },
         )?;
 
-        for step in &plan.steps {
-            trace.push(
-                EventLevel::Info,
-                PipelineEventType::ReasoningStepExecuted,
-                format!("executing step {:?}", step.phase),
-            );
-            let prompt = format!(
-                "Goal: {goal}\nPersona: {}\nStep: {:?}\nStep objective: {}\nExpected artifact: {}\nMemory context: {:?}",
-                self.persona.name(),
-                step.phase,
-                step.goal,
-                step.expected_artifact,
-                retrieved_context
-            );
+        const MAX_LOCAL_RETRIES: usize = 2;
+        let mut step_retry_count: HashMap<String, usize> = HashMap::new();
+        let mut correction_attempts = 0usize;
+        let mut correction_history: Vec<CorrectionAttemptRecord> = Vec::new();
+        let mut final_failure_phase: Option<String> = None;
+        'steps: for step in &plan.steps {
+            let mut attempt = 0usize;
+            let mut correction_feedback: Option<String> = None;
 
-            let output = self
-                .model
-                .complete(&self.persona.system_prompt(), &prompt, &context)
-                .await?;
+            loop {
+                trace.push(
+                    EventLevel::Info,
+                    PipelineEventType::ReasoningStepExecuted,
+                    format!(
+                        "executing step {:?} (attempt {}/{})",
+                        step.phase,
+                        attempt + 1,
+                        MAX_LOCAL_RETRIES + 1
+                    ),
+                );
+                let prompt = format!(
+                    "Goal: {goal}\nPersona: {}\nStep: {:?}\nStep objective: {}\nExpected artifact: {}\nMemory context: {:?}\nCorrection feedback: {}",
+                    self.persona.name(),
+                    step.phase,
+                    step.goal,
+                    step.expected_artifact,
+                    retrieved_context,
+                    correction_feedback
+                        .clone()
+                        .unwrap_or_else(|| "none".to_string())
+                );
 
-            let verification =
-                execution.verify_and_push(StepResult::succeeded(step.phase, output))?;
-            trace.push(
-                EventLevel::Info,
-                PipelineEventType::LocalVerificationCompleted,
-                format!(
-                    "local verification for {:?}: passed={}",
-                    step.phase, verification.passed
-                ),
-            );
-            if !verification.passed {
+                let output = self
+                    .model
+                    .complete(&self.persona.system_prompt(), &prompt, &context)
+                    .await?;
+
+                let verification =
+                    execution.verify_and_push(StepResult::succeeded(step.phase, output))?;
+                trace.push(
+                    EventLevel::Info,
+                    PipelineEventType::LocalVerificationCompleted,
+                    format!(
+                        "local verification for {:?} attempt {}: passed={}",
+                        step.phase,
+                        attempt + 1,
+                        verification.passed
+                    ),
+                );
+                if verification.passed {
+                    break;
+                }
+
                 trace.push(
                     EventLevel::Warning,
                     PipelineEventType::CorrectionDecisionIssued,
                     format!("decision: {:?}", verification.decision),
                 );
-                break;
+
+                if attempt >= MAX_LOCAL_RETRIES {
+                    final_failure_phase = Some(format!("{:?}", step.phase));
+                    trace.push(
+                        EventLevel::Warning,
+                        PipelineEventType::CorrectionAttemptFailed,
+                        format!("retry budget exhausted for phase {:?}", step.phase),
+                    );
+                    break 'steps;
+                }
+
+                attempt += 1;
+                let failure_reason = verification
+                    .failure
+                    .as_ref()
+                    .map(|failure| format!("{:?} - {}", failure.kind, failure.message))
+                    .unwrap_or_else(|| "unknown local verification failure".to_string());
+                correction_feedback = Some(failure_reason.clone());
+                correction_attempts += 1;
+                step_retry_count
+                    .entry(format!("{:?}", step.phase))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+                trace.push(
+                    EventLevel::Info,
+                    PipelineEventType::CorrectionAttemptStarted,
+                    format!(
+                        "starting correction attempt {} for phase {:?}: {}",
+                        attempt + 1,
+                        step.phase,
+                        failure_reason
+                    ),
+                );
+                correction_history.push(CorrectionAttemptRecord {
+                    phase: format!("{:?}", step.phase),
+                    attempt_number: attempt + 1,
+                    previous_failure_reason: failure_reason,
+                    succeeded: false,
+                });
+            }
+
+            if attempt > 0 {
+                trace.push(
+                    EventLevel::Info,
+                    PipelineEventType::CorrectionAttemptSucceeded,
+                    format!(
+                        "correction attempt {} succeeded for phase {:?}",
+                        attempt + 1,
+                        step.phase
+                    ),
+                );
+                if let Some(last) = correction_history.last_mut() {
+                    if last.phase == format!("{:?}", step.phase) {
+                        last.succeeded = true;
+                    }
+                }
             }
         }
 
@@ -593,6 +682,10 @@ where
                 "reasoning_steps_executed": summary.reasoning_steps_executed,
                 "local_verifications": summary.local_verifications,
                 "global_failures": summary.global_failures,
+                "step_retry_count": step_retry_count,
+                "correction_attempts": correction_attempts,
+                "final_failure_phase": final_failure_phase,
+                "correction_history": correction_history,
                 "execution_summary": summary,
                 "execution_trace": trace,
             })
@@ -701,6 +794,72 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct RetryModel {
+        fail_analyze_always: bool,
+        attempts_by_phase: Mutex<HashMap<String, usize>>,
+    }
+
+    impl RetryModel {
+        fn new(fail_analyze_always: bool) -> Self {
+            Self {
+                fail_analyze_always,
+                attempts_by_phase: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ModelProvider for RetryModel {
+        fn name(&self) -> &'static str {
+            "retry-model"
+        }
+
+        async fn complete(
+            &self,
+            _system_prompt: &str,
+            user_prompt: &str,
+            _context: &ExecutionContext,
+        ) -> Result<String> {
+            let phase = if user_prompt.contains("Step: Analyze") {
+                "Analyze"
+            } else if user_prompt.contains("Step: Hypothesis") {
+                "Hypothesis"
+            } else if user_prompt.contains("Step: ActionOrTest") {
+                "ActionOrTest"
+            } else {
+                "Validation"
+            };
+
+            let mut attempts = self
+                .attempts_by_phase
+                .lock()
+                .map_err(|_| anyhow!("attempts lock poisoned"))?;
+            let current = attempts.entry(phase.to_string()).or_insert(0);
+            *current += 1;
+            let attempt_number = *current;
+            drop(attempts);
+
+            if phase == "Analyze" {
+                if self.fail_analyze_always {
+                    return Ok("content intentionally incoherent".to_string());
+                }
+                if attempt_number == 1 {
+                    return Ok("content intentionally incoherent".to_string());
+                }
+                return Ok("problem statement extracted".to_string());
+            }
+
+            if phase == "Hypothesis" {
+                return Ok("root cause hypothesis: ownership mismatch".to_string());
+            }
+            if phase == "ActionOrTest" {
+                return Ok("test result confirms root cause hypothesis".to_string());
+            }
+            Ok("validation report confirms test result and hypothesis".to_string())
+        }
+    }
+
     #[tokio::test]
     async fn orchestrated_flow_nominal_end_to_end() {
         let agent = OrchestratedAgent::new(TestPersona, TestModel, ToolRegistry::new())
@@ -746,6 +905,119 @@ mod tests {
         assert!(pos("MemoryRetrieved") < pos("ReasoningPlanPrepared"));
         assert!(pos("ReasoningPlanPrepared") < pos("GlobalVerificationCompleted"));
         assert!(pos("GlobalVerificationCompleted") < pos("FinalResultProduced"));
+    }
+
+    #[tokio::test]
+    async fn retry_success_visible_in_structured_output() {
+        let model = RetryModel::new(false);
+        let agent = OrchestratedAgent::new(TestPersona, model, ToolRegistry::new())
+            .expect("agent should initialize");
+
+        let result = agent
+            .run("Fix rust compile error", ExecutionContext::default())
+            .await
+            .expect("orchestrated run should succeed");
+
+        let structured = result
+            .structured_output
+            .expect("structured output expected");
+
+        assert_eq!(structured["step_retry_count"]["Analyze"], 1);
+        assert_eq!(structured["correction_attempts"], 1);
+        assert_eq!(structured["final_failure_phase"], serde_json::Value::Null);
+
+        let history = structured["correction_history"]
+            .as_array()
+            .expect("correction history array expected");
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0]["phase"], "Analyze");
+        assert_eq!(history[0]["attempt_number"], 2);
+        assert_eq!(history[0]["succeeded"], true);
+    }
+
+    #[tokio::test]
+    async fn retry_failure_visible_in_structured_output() {
+        let model = RetryModel::new(true);
+        let agent = OrchestratedAgent::new(TestPersona, model, ToolRegistry::new())
+            .expect("agent should initialize");
+
+        let result = agent
+            .run("Fix rust compile error", ExecutionContext::default())
+            .await
+            .expect("orchestrated run should complete with revision required");
+
+        let structured = result
+            .structured_output
+            .expect("structured output expected");
+        assert_eq!(structured["verification_status"], "NeedsRevision");
+        assert_eq!(structured["step_retry_count"]["Analyze"], 2);
+        assert_eq!(structured["correction_attempts"], 2);
+
+        let history = structured["correction_history"]
+            .as_array()
+            .expect("correction history array expected");
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|h| h["phase"] == "Analyze"));
+        assert!(history.iter().all(|h| h["succeeded"] == false));
+    }
+
+    #[tokio::test]
+    async fn correction_events_order() {
+        let model = RetryModel::new(false);
+        let agent = OrchestratedAgent::new(TestPersona, model, ToolRegistry::new())
+            .expect("agent should initialize");
+
+        let result = agent
+            .run("Fix rust compile error", ExecutionContext::default())
+            .await
+            .expect("orchestrated run should succeed");
+        let structured = result
+            .structured_output
+            .expect("structured output expected");
+
+        let events = structured["execution_trace"]["events"]
+            .as_array()
+            .expect("trace events should be present");
+        let event_types = events
+            .iter()
+            .map(|e| e["event_type"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>();
+
+        let started = event_types
+            .iter()
+            .position(|t| *t == "CorrectionAttemptStarted")
+            .expect("correction attempt started event should exist");
+        let succeeded = event_types
+            .iter()
+            .position(|t| *t == "CorrectionAttemptSucceeded")
+            .expect("correction attempt succeeded event should exist");
+
+        assert!(started < succeeded);
+    }
+
+    #[tokio::test]
+    async fn final_failure_phase_present_when_retry_budget_exhausted() {
+        let model = RetryModel::new(true);
+        let agent = OrchestratedAgent::new(TestPersona, model, ToolRegistry::new())
+            .expect("agent should initialize");
+
+        let result = agent
+            .run("Fix rust compile error", ExecutionContext::default())
+            .await
+            .expect("orchestrated run should complete");
+        let structured = result
+            .structured_output
+            .expect("structured output expected");
+
+        assert_eq!(structured["final_failure_phase"], "Analyze");
+
+        let events = structured["execution_trace"]["events"]
+            .as_array()
+            .expect("trace events should be present");
+        let has_failed_event = events
+            .iter()
+            .any(|e| e["event_type"].as_str() == Some("CorrectionAttemptFailed"));
+        assert!(has_failed_event);
     }
 
     fn make_result_for_eval(
