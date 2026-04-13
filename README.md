@@ -2,7 +2,7 @@
 
 ![Rust](https://img.shields.io/badge/Rust-2021-000000?logo=rust)
 ![License](https://img.shields.io/badge/License-MIT-blue)
-![Status](https://img.shields.io/badge/Status-V2%20Launch%20Prep-6f42c1)
+![Status](https://img.shields.io/badge/Status-v0.1.0%20Public-blueviolet)
 ![Personas](https://img.shields.io/badge/Personas-4-success)
 ![CI](https://github.com/elmoussariha-ops/Pata/actions/workflows/ci.yml/badge.svg)
 
@@ -32,6 +32,11 @@ Pour maximiser la crédibilité technique auprès d’une startup IA, les 3 prio
 3. **Contrats d’API + fiabilité opérationnelle**
    - ajouter versioning API, règles de compatibilité, et SLO de base (latence/taux d’échec).
    - objectif: rassurer une équipe produit/infra sur l’intégration en environnement réel.
+
+### v0.1.0 public release
+
+- 📝 Release notes: [`RELEASE_NOTES_v0.1.0.md`](RELEASE_NOTES_v0.1.0.md)
+- 📦 Startup credibility pack: [`docs/STARTUP_CREDIBILITY_PACK.md`](docs/STARTUP_CREDIBILITY_PACK.md)
 
 ### Start here (best first impression)
 
