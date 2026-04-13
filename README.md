@@ -4,6 +4,7 @@
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Status](https://img.shields.io/badge/Status-V2%20Launch%20Prep-6f42c1)
 ![Personas](https://img.shields.io/badge/Personas-4-success)
+![CI](https://github.com/elmoussariha-ops/Pata/actions/workflows/ci.yml/badge.svg)
 
 ## 🚀 Build specialized agents you can actually inspect, verify, and iterate
 
@@ -17,6 +18,20 @@ Pata is an open-source Rust platform for teams who want more than generic agent 
 - deterministic evaluation.
 
 **Current state (honest):** V2 foundation is in public validation. Runtime integrations are intentionally minimal.
+
+## Priorités crédibilité (startup IA)
+
+Pour maximiser la crédibilité technique auprès d’une startup IA, les 3 priorités sont :
+
+1. **CI robuste et bloquante (PR gate)**
+   - formatage, lint strict et tests exécutés sur chaque PR.
+   - objectif: réduire le risque d’intégration et accélérer la review technique.
+2. **Évaluation continue orientée produit**
+   - transformer les use cases en suite d’évals versionnée avec seuils de régression.
+   - objectif: démontrer la stabilité des personas sur des scénarios métier.
+3. **Contrats d’API + fiabilité opérationnelle**
+   - ajouter versioning API, règles de compatibilité, et SLO de base (latence/taux d’échec).
+   - objectif: rassurer une équipe produit/infra sur l’intégration en environnement réel.
 
 ### Start here (best first impression)
 

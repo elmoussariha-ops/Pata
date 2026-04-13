@@ -910,7 +910,7 @@ mod tests {
 
     #[test]
     fn permanent_memory_insertion_and_reading_work() {
-        let mut permanent = PermanentMemory::default();
+        let mut permanent: PermanentMemory<InMemoryPermanentBackend> = PermanentMemory::default();
 
         permanent
             .insert(PermanentMemoryEntry::new(
@@ -930,7 +930,7 @@ mod tests {
 
     #[test]
     fn permanent_memory_update_is_explicit_and_safe() {
-        let mut permanent = PermanentMemory::default();
+        let mut permanent: PermanentMemory<InMemoryPermanentBackend> = PermanentMemory::default();
 
         permanent
             .insert(PermanentMemoryEntry::new(
@@ -961,7 +961,7 @@ mod tests {
 
     #[test]
     fn permanent_memory_protects_critical_entries_from_safe_overwrite() {
-        let mut permanent = PermanentMemory::default();
+        let mut permanent: PermanentMemory<InMemoryPermanentBackend> = PermanentMemory::default();
         let key = "architecture.rule.decoupling";
 
         permanent
@@ -993,7 +993,7 @@ mod tests {
 
     #[test]
     fn permanent_memory_force_update_allows_controlled_override() {
-        let mut permanent = PermanentMemory::default();
+        let mut permanent: PermanentMemory<InMemoryPermanentBackend> = PermanentMemory::default();
         let key = "system.rule.audit";
 
         permanent
