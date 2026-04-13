@@ -4,6 +4,9 @@ Pipeline sécurisé réel:
 
 `scan → retrieve → plan → patch → review → approve → apply → validate → memory → optimize`
 
+Garanties de sécurité des artefacts patch:
+- checksums **SHA-256** sur patch/meta/review (détection de tampering local)
+
 ## Installation macOS (Apple Silicon)
 ```bash
 xcode-select --install || true
