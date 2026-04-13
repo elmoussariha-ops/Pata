@@ -10,8 +10,8 @@ repository.workspace = true
 agent-core = { path = "../agent-core" }
 agent-traits = { path = "../agent-traits" }
 persona-registry = { path = "../persona-registry" }
+runtime-support = { path = "../runtime-support" }
 anyhow.workspace = true
-async-trait.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -1,5 +1,5 @@
 [package]
-name = "cli"
+name = "runtime-support"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,11 +9,6 @@ repository.workspace = true
 [dependencies]
 agent-core = { path = "../agent-core" }
 agent-traits = { path = "../agent-traits" }
-persona-registry = { path = "../persona-registry" }
-runtime-support = { path = "../runtime-support" }
 anyhow.workspace = true
-clap.workspace = true
-serde.workspace = true
+async-trait.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
-toml.workspace = true

@@ -653,6 +653,7 @@ where
                 "reasoning_steps_executed": summary.reasoning_steps_executed,
                 "local_verifications": summary.local_verifications,
                 "global_failures": summary.global_failures,
+                "raw_response": raw_final_content,
                 "execution_summary": summary,
                 "execution_trace": trace,
             })
@@ -778,6 +779,7 @@ mod tests {
             .expect("structured output expected");
         assert_eq!(structured["verification_status"], "Accept");
         assert_eq!(structured["reasoning_steps_executed"], 4);
+        assert!(structured["raw_response"].as_str().is_some());
 
         let events = structured["execution_trace"]["events"]
             .as_array()
