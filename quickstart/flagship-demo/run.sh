@@ -54,6 +54,7 @@ payload = json.loads(json_path.read_text())
 
 answer = payload.get("answer", "")
 structured = payload.get("structured_output") or {}
+raw_response = structured.get("raw_response") or answer
 trace = structured.get("execution_trace", {})
 events = trace.get("events", [])
 
@@ -66,7 +67,7 @@ sections = {
     "FINAL_ANSWER": "",
 }
 
-for line in answer.splitlines():
+for line in raw_response.splitlines():
     for key in sections:
         prefix = f"{key}:"
         if line.strip().startswith(prefix):

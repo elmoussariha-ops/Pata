@@ -1,9 +1,8 @@
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use agent_core::{OrchestratedAgent, ToolRegistry};
-use agent_traits::{Agent, ExecutionContext, ModelProvider, Tool, ToolOutput, ToolSpec};
+use agent_core::OrchestratedAgent;
+use agent_traits::{Agent, ExecutionContext};
 use anyhow::{Context, Result};
-use async_trait::async_trait;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -12,6 +11,7 @@ use axum::{
     Json, Router,
 };
 use persona_registry::PersonaRegistry;
+use runtime_support::{build_tool_registry, ensure_deterministic_mode, DeterministicModelProvider};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -98,123 +98,6 @@ impl IntoResponse for ApiError {
     }
 }
 
-#[derive(Debug, Clone)]
-struct DeterministicModelProvider;
-
-#[async_trait]
-impl ModelProvider for DeterministicModelProvider {
-    fn name(&self) -> &'static str {
-        "deterministic-model"
-    }
-
-    async fn complete(
-        &self,
-        system_prompt: &str,
-        user_prompt: &str,
-        _context: &ExecutionContext,
-    ) -> Result<String> {
-        let is_teacher = system_prompt.contains("pedagogical AI teacher");
-        let is_personal = system_prompt.contains("structured personal productivity assistant");
-        let is_smb = system_prompt.contains("SMB operations copilot");
-
-        if is_personal {
-            return Ok(format!(
-                "CONTEXT_SUMMARY: You want better weekly organization with limited time and energy.\n\
-PRIMARY_OBJECTIVE: Stabilize personal planning and focus on essential priorities.\n\
-ACTION_STRUCTURE: Plan weekly priorities on Sunday, set daily top-3 tasks, and review each evening.\n\
-RISK_CHECK: Main constraint is limited evening energy; keep tasks small and review trade-offs.\n\
-NEXT_STEP: Write tomorrow's top-3 tasks now and block 20 minutes for planning.\n\
-FINAL_ANSWER: Use a lightweight routine, adjust weekly, and keep the plan realistic with constraints.\n\
-TRACE_NOTE: {user_prompt}"
-            ));
-        }
-
-        if is_smb {
-            return Ok(format!(
-                "BUSINESS_CONTEXT: Small business with limited staff capacity and marketing budget.\n\
-OPERATIONAL_OBJECTIVE: Increase repeat customer visits in the next 30 days.\n\
-ACTION_BACKLOG: 1) Daily follow-up messages, 2) Weekly offer bundle, 3) Inventory focus on top sellers.\n\
-DECISION_SUPPORT: Assumption: retention actions will outperform broad paid ads under current budget.\n\
-FOLLOW_UP_METRICS: Repeat visits/week, offer conversion rate, average basket size.\n\
-FINAL_ANSWER: Execute low-cost retention actions first, track weekly metrics, and iterate quickly.\n\
-TRACE_NOTE: {user_prompt}"
-            ));
-        }
-
-        if user_prompt.contains("Analyze") {
-            return Ok(format!("ANALYSIS: {user_prompt}"));
-        }
-        if user_prompt.contains("Hypothesis") {
-            return Ok(format!("HYPOTHESIS: {user_prompt}"));
-        }
-        if user_prompt.contains("ActionOrTest") {
-            return Ok(format!("ACTION_PLAN: {user_prompt}"));
-        }
-        if user_prompt.contains("Validation") {
-            return if is_teacher {
-                Ok("LEARNING_OBJECTIVE: Understand Rust ownership for function arguments.\n\
-LEVEL_ADAPTATION: beginner audience, short sentences and minimal jargon.\n\
-EXPLANATION: In Rust, each value has one owner; moving a value transfers ownership.\n\
-GUIDED_PRACTICE: Compare a function taking String by value versus &str by reference.\n\
-UNDERSTANDING_CHECK: Why can you still use a variable after borrowing but not after move?\n\
-FINAL_ANSWER: Start with ownership, then borrowing, then lifetimes using one compiled example each."
-                    .to_string())
-            } else if is_personal {
-                Ok("CONTEXT_SUMMARY: You want better weekly organization with limited time and energy.\n\
-PRIMARY_OBJECTIVE: Stabilize personal planning and focus on essential priorities.\n\
-ACTION_STRUCTURE: Plan weekly priorities on Sunday, set daily top-3 tasks, and review each evening.\n\
-RISK_CHECK: Main constraint is limited evening energy; keep tasks small and review trade-offs.\n\
-NEXT_STEP: Write tomorrow's top-3 tasks now and block 20 minutes for planning.\n\
-FINAL_ANSWER: Use a lightweight routine, adjust weekly, and keep the plan realistic with constraints."
-                    .to_string())
-            } else if is_smb {
-                Ok("BUSINESS_CONTEXT: Small business with limited staff capacity and marketing budget.\n\
-OPERATIONAL_OBJECTIVE: Increase repeat customer visits in the next 30 days.\n\
-ACTION_BACKLOG: 1) Daily follow-up messages, 2) Weekly offer bundle, 3) Inventory focus on top sellers.\n\
-DECISION_SUPPORT: Assumption: retention actions will outperform broad paid ads under current budget.\n\
-FOLLOW_UP_METRICS: Repeat visits/week, offer conversion rate, average basket size.\n\
-FINAL_ANSWER: Execute low-cost retention actions first, track weekly metrics, and iterate quickly."
-                    .to_string())
-            } else {
-                Ok("ANALYSIS: Investigate error scope and constraints.\n\
-HYPOTHESIS: Root cause likely ownership mismatch.\n\
-ACTION_PLAN: Apply scoped borrow refactor and run cargo check.\n\
-VALIDATION: Verify no compiler errors and tests remain green.\n\
-DURABLE_RULES_CHECK: No contradiction with project rules.\n\
-FINAL_ANSWER: Apply scoped borrow refactor, re-run cargo test, then review diff."
-                    .to_string())
-            };
-        }
-
-        Ok("FINAL_ANSWER: deterministic fallback response.".to_string())
-    }
-}
-
-#[derive(Debug, Clone)]
-struct NoopTool {
-    name: String,
-}
-
-#[async_trait]
-impl Tool for NoopTool {
-    fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: self.name.clone(),
-            description: "No-op placeholder tool for local runtime".to_string(),
-            input_schema: json!({"type": "object"}),
-            output_schema: json!({"type": "object"}),
-            timeout_ms: 1_000,
-            required_permissions: Vec::new(),
-        }
-    }
-
-    async fn run(&self, _input: Value, _context: &ExecutionContext) -> Result<ToolOutput> {
-        Ok(ToolOutput {
-            value: json!({"ok": true}),
-        })
-    }
-}
-
 fn validate_goal(goal: &str) -> Result<(), ApiError> {
     if goal.trim().is_empty() {
         return Err(ApiError {
@@ -254,22 +137,6 @@ fn load_config(path: &PathBuf) -> Result<AppConfig> {
     }
 
     Ok(config)
-}
-
-fn build_registry() -> ToolRegistry {
-    let mut registry = ToolRegistry::new();
-    for name in [
-        "filesystem.read",
-        "filesystem.write",
-        "cargo.check",
-        "cargo.test",
-        "git.diff",
-    ] {
-        registry.register(NoopTool {
-            name: name.to_string(),
-        });
-    }
-    registry
 }
 
 struct AppState {
@@ -341,12 +208,7 @@ async fn main() -> Result<()> {
     let config_path = PathBuf::from("config/app.toml");
     let config = load_config(&config_path)?;
 
-    if config.model.mode != "deterministic" {
-        anyhow::bail!(
-            "unsupported model mode '{}': only deterministic is available in V2 runtime",
-            config.model.mode
-        );
-    }
+    ensure_deterministic_mode(&config.model.mode)?;
 
     let persona_name = config
         .persona
@@ -355,11 +217,10 @@ async fn main() -> Result<()> {
         .unwrap_or("developer");
 
     let persona = PersonaRegistry::create(persona_name).context("invalid persona selection")?;
-
     let agent = Arc::new(OrchestratedAgent::new(
         persona,
         DeterministicModelProvider,
-        build_registry(),
+        build_tool_registry(),
     )?);
 
     let state = Arc::new(AppState {
@@ -392,7 +253,7 @@ mod tests {
         Arc::new(AppState {
             persona_name: persona_name.to_string(),
             agent: Arc::new(
-                OrchestratedAgent::new(persona, DeterministicModelProvider, build_registry())
+                OrchestratedAgent::new(persona, DeterministicModelProvider, build_tool_registry())
                     .expect("agent init"),
             ),
         })

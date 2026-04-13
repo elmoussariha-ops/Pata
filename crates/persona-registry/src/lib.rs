@@ -17,6 +17,10 @@ pub struct PersonaMetadata {
 pub struct PersonaRegistry;
 
 impl PersonaRegistry {
+    fn normalize_name(name: &str) -> String {
+        name.trim().to_ascii_lowercase()
+    }
+
     pub fn list() -> Vec<PersonaMetadata> {
         vec![
             Self::developer_metadata(),
@@ -27,7 +31,8 @@ impl PersonaRegistry {
     }
 
     pub fn create(name: &str) -> Result<Box<dyn Persona>> {
-        match name {
+        let normalized = Self::normalize_name(name);
+        match normalized.as_str() {
             "developer" => Ok(Box::new(DeveloperPersona)),
             "teacher" => Ok(Box::new(TeacherPersona)),
             "personal" => Ok(Box::new(PersonalPersona)),
@@ -44,7 +49,8 @@ impl PersonaRegistry {
     }
 
     pub fn exists(name: &str) -> bool {
-        Self::list().iter().any(|meta| meta.name == name)
+        let normalized = Self::normalize_name(name);
+        Self::list().iter().any(|meta| meta.name == normalized)
     }
 
     fn developer_metadata() -> PersonaMetadata {
@@ -163,5 +169,12 @@ mod tests {
         assert_eq!(teacher.name(), "teacher");
         assert_eq!(personal.name(), "personal");
         assert_eq!(smb.name(), "smb");
+    }
+
+    #[test]
+    fn registry_create_is_tolerant_to_case_and_whitespace() {
+        let dev = PersonaRegistry::create("  Developer  ").expect("developer persona");
+        assert_eq!(dev.name(), "developer");
+        assert!(PersonaRegistry::exists(" SMB "));
     }
 }

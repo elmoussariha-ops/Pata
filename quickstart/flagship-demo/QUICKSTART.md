@@ -33,6 +33,9 @@ The script runs the **developer persona** and prints:
 5. **Observable trace events**
 6. **Final answer**
 
+Implementation note: the demo reads section-by-section reasoning from
+`structured_output.raw_response` when available, while `answer` stays concise for end-user UX.
+
 The rendered output is identical across:
 - **LIVE MODE** (real CLI execution),
 - **FALLBACK OFFLINE MODE** (automatic fallback if live fails),

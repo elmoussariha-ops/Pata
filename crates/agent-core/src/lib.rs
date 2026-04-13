@@ -403,6 +403,37 @@ where
             ],
         )
     }
+
+    fn format_memory_context(items: &[String]) -> String {
+        if items.is_empty() {
+            return "none".to_string();
+        }
+
+        items
+            .iter()
+            .take(4)
+            .map(|item| {
+                let compact = item.split_whitespace().collect::<Vec<_>>().join(" ");
+                if compact.chars().count() > 180 {
+                    format!("{}…", compact.chars().take(180).collect::<String>())
+                } else {
+                    compact
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    fn extract_final_answer(raw: &str) -> String {
+        raw.lines()
+            .find_map(|line| {
+                line.strip_prefix("FINAL_ANSWER:")
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            })
+            .map(ToString::to_string)
+            .unwrap_or_else(|| raw.trim().to_string())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -489,6 +520,7 @@ where
         )?;
 
         const MAX_LOCAL_RETRIES: usize = 2;
+        let memory_context = Self::format_memory_context(&retrieved_context);
         'steps: for step in &plan.steps {
             let mut attempt = 0usize;
             let mut correction_feedback: Option<String> = None;
@@ -505,12 +537,12 @@ where
                     ),
                 );
                 let prompt = format!(
-                    "Goal: {goal}\nPersona: {}\nStep: {:?}\nStep objective: {}\nExpected artifact: {}\nMemory context: {:?}\nCorrection feedback: {}",
+                    "Goal: {goal}\nPersona: {}\nStep: {:?}\nStep objective: {}\nExpected artifact: {}\nMemory context: {}\nCorrection feedback: {}",
                     self.persona.name(),
                     step.phase,
                     step.goal,
                     step.expected_artifact,
-                    retrieved_context,
+                    &memory_context,
                     correction_feedback
                         .clone()
                         .unwrap_or_else(|| "none".to_string())
@@ -572,7 +604,7 @@ where
             );
         }
 
-        let final_content = execution
+        let raw_final_content = execution
             .results
             .iter()
             .find(|r| r.phase == ReasoningPhase::Validation)
@@ -581,8 +613,9 @@ where
             .unwrap_or_else(|| "Révision requise avant réponse finale.".to_string());
 
         self.persona
-            .validate(&final_content)
+            .validate(&raw_final_content)
             .map_err(|err| anyhow!(err.to_string()))?;
+        let final_content = Self::extract_final_answer(&raw_final_content);
 
         {
             let mut memory = self
@@ -620,6 +653,7 @@ where
                 "reasoning_steps_executed": summary.reasoning_steps_executed,
                 "local_verifications": summary.local_verifications,
                 "global_failures": summary.global_failures,
+                "raw_response": raw_final_content,
                 "execution_summary": summary,
                 "execution_trace": trace,
             })
@@ -745,6 +779,7 @@ mod tests {
             .expect("structured output expected");
         assert_eq!(structured["verification_status"], "Accept");
         assert_eq!(structured["reasoning_steps_executed"], 4);
+        assert!(structured["raw_response"].as_str().is_some());
 
         let events = structured["execution_trace"]["events"]
             .as_array()
@@ -871,5 +906,24 @@ mod tests {
         assert_eq!(summary.total_cases, 2);
         assert!(summary.average_score >= 0.0 && summary.average_score <= 1.0);
         assert!(!summary.average_by_dimension.is_empty());
+    }
+
+    #[test]
+    fn extract_final_answer_prefers_explicit_marker() {
+        let raw = "ANALYSIS: x\nFINAL_ANSWER: Keep only this line";
+        let extracted = OrchestratedAgent::<TestPersona, TestModel>::extract_final_answer(raw);
+        assert_eq!(extracted, "Keep only this line");
+    }
+
+    #[test]
+    fn memory_context_format_is_bounded_and_compact() {
+        let entries = vec![
+            "first context entry with     extra     spaces".to_string(),
+            "x".repeat(400),
+        ];
+        let formatted =
+            OrchestratedAgent::<TestPersona, TestModel>::format_memory_context(&entries);
+        assert!(formatted.contains("first context entry with extra spaces"));
+        assert!(formatted.chars().count() < 250);
     }
 }

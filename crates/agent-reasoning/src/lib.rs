@@ -4,6 +4,8 @@
 //! Analyze -> Hypothesis -> Action/Test -> Validation,
 //! plus a first internal verify/correct loop compatible with future Chain-of-Verification.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -469,20 +471,17 @@ fn tokenize(input: &str) -> Vec<String> {
 }
 
 fn text_overlap_ratio(expected: &str, output: &str) -> f32 {
-    let expected_tokens = tokenize(expected);
+    let expected_tokens: HashSet<_> = tokenize(expected).into_iter().collect();
     if expected_tokens.is_empty() {
         return 1.0;
     }
 
-    let output_tokens = tokenize(output);
+    let output_tokens: HashSet<_> = tokenize(output).into_iter().collect();
     if output_tokens.is_empty() {
         return 0.0;
     }
 
-    let overlap = expected_tokens
-        .iter()
-        .filter(|token| output_tokens.contains(*token))
-        .count();
+    let overlap = expected_tokens.intersection(&output_tokens).count();
 
     overlap as f32 / expected_tokens.len() as f32
 }
@@ -773,5 +772,11 @@ mod tests {
         let report = execution.verify_global();
         assert_eq!(report.decision, GlobalDecision::NeedsRevision);
         assert!(!report.passed);
+    }
+
+    #[test]
+    fn overlap_ratio_uses_unique_tokens() {
+        let ratio = text_overlap_ratio("rust rust ownership", "ownership in rust");
+        assert!((ratio - 1.0).abs() < f32::EPSILON);
     }
 }

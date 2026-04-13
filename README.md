@@ -378,6 +378,9 @@ Demo guidée multi-persona: [`examples/multi_persona_demo.md`](examples/multi_pe
 5. vérification globale
 6. résultat final avec confiance + trace + évaluation
 
+Note DX: la réponse utilisateur (`answer`) est volontairement concise; le brouillon structuré complet
+reste exposé dans `structured_output.raw_response` pour debug/demo.
+
 ### Extrait d’usage (conceptuel)
 
 ```rust
