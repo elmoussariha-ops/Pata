@@ -26,15 +26,15 @@ python3 benchmarks/public-comparison/run_benchmark.py
 
 ## Technical proof snapshot (public + reproducible)
 
-Latest benchmark report (`benchmarks/public-comparison/REPORT.md`):
+Latest benchmark report (`benchmarks/public-comparison/REPORT.md`) now includes **quality gates** and latency distributions across 5 runs per scenario.
 
-| Scenario | Persona | Run status | Avg time (ms) | Confidence | Verification rate | Stability |
-|---|---|---|---:|---:|---:|---|
-| Code review | `developer` | OK (2/2) | 339.27 | 0.75 | 0% | stable |
-| Structured tutoring | `teacher` | OK (2/2) | 317.62 | 1.00 | 100% | stable |
-| SMB support workflow | `smb` | OK (2/2) | 319.08 | 1.00 | 100% | stable |
+| Scenario | Persona | Run status | p50 (ms) | p95 (ms) | Stddev (ms) | Verification rate | Quality gate |
+|---|---|---|---:|---:|---:|---:|---|
+| Code review | `developer` | OK (5/5) | 481.21 | 513.66 | 16.32 | 0% | **FAIL** |
+| Structured tutoring | `teacher` | OK (5/5) | 482.28 | 490.31 | 7.39 | 100% | **PASS** |
+| SMB support workflow | `smb` | OK (5/5) | 490.31 | 495.64 | 8.66 | 100% | **PASS** |
 
-No synthetic scoring is injected in this report: metrics are computed from runtime outputs only.
+Machine-readable benchmark output is published in `benchmarks/public-comparison/latest.json` for transparent reuse in releases and dashboards.
 
 ## v0.1.0 release essentials
 
