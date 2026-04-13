@@ -1,0 +1,5 @@
+name	gate	description
+pipeline_green	hard	cargo check + clippy + test must all pass
+regression_threshold_gate	hard	no regression alert from baseline runtime gate
+persona_contract_integrity	soft	persona snapshot has version prefix and >=5 clauses
+runtime_budget	hard	validate total duration <= 180000 ms

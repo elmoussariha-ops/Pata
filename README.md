@@ -1,29 +1,25 @@
-# Pata MVP+ (Rust local agent for macOS Apple Silicon)
+# Pata (agent Rust local)
 
-Pipeline sécurisé réel:
+Pipeline actuel:
 
 `scan → retrieve → plan → patch → review → approve → apply → validate → memory → optimize`
 
 Garanties de sécurité des artefacts patch:
 - checksums **SHA-256** sur patch/meta/review (détection de tampering local)
 
-## Installation macOS (Apple Silicon)
-```bash
-xcode-select --install || true
-brew install rustup-init ollama
-rustup-init -y
-source "$HOME/.cargo/env"
-```
+## Démarrage rapide
+Le quickstart exécutable et maintenu est ici: [`QUICKSTART.md`](./QUICKSTART.md).
 
-## Build / Validation
+## Build / validation locale
 ```bash
 cargo fmt --all
-cargo check --offline || cargo check
-cargo clippy --offline -- -D warnings || cargo clippy -- -D warnings
-cargo test --offline || cargo test
+cargo check --all-targets --offline || cargo check --all-targets
+cargo clippy --all-targets --offline -- -D warnings || cargo clippy --all-targets -- -D warnings
+cargo test --all-targets --offline || cargo test --all-targets
+cargo run -- evals
 ```
 
-## Commandes principales
+## Commandes principales supportées
 ```bash
 cargo run -- scan
 cargo run -- retrieve "scanner"
@@ -38,56 +34,25 @@ cargo run -- review patch-<id> --explain-risk
 cargo run -- approve patch-<id> "manual-approved"
 cargo run -- apply patch-<id>
 cargo run -- validate
+cargo run -- evals
 cargo run -- status
 cargo run -- resume-session
 cargo run -- end-session
 cargo run -- memory show
-cargo run -- memory recent
-cargo run -- memory open-loops
-cargo run -- memory open-loops --priority
-cargo run -- memory open-loops --recent
-cargo run -- memory lessons
-cargo run -- memory digest
-cargo run -- memory failures
-cargo run -- memory failure-recent
-cargo run -- memory promote-failure fm-<ts>
-cargo run -- memory explain-open-loop ol-<ts>
-cargo run -- memory similar-functions command_retrieve
-cargo run -- memory add-open-loop bug "panic scanner sur gros repo" 5 src/scanner.rs critical
-cargo run -- memory resolve-open-loop ol-<ts>
-cargo run -- memory add-lesson retrieval "booster modules touchés récemment"
-cargo run -- --verbose doctor
-cargo run -- --verbose smoke-test
-cargo run -- --verbose ollama-status
+cargo run -- doctor
+cargo run -- smoke-test
+cargo run -- ollama-check
+cargo run -- ollama-status
+cargo run -- model-status
 cargo run -- low-power-status
 cargo run -- tui
 cargo run -- watch 30
 ```
 
-## Mode low-power (MacBook Air M4)
-Activation:
-```bash
-cargo run -- --low-power status
-# ou
-export PATA_LOW_POWER=1
-cargo run -- status
-```
-
-Effets:
-- retrieval top-N réduit
-- timeout Ollama plafonné
-- retries Ollama réduits
-- max tokens réduit
-- petite pause TUI pour limiter charge idle
-
-## Diagnostics Ollama
-```bash
-cargo run -- ollama-check
-cargo run -- ollama-status
-cargo run -- model-status
-cargo run -- doctor
-cargo run -- smoke-test
-```
+## Evals versionnées
+- `evals/cases.v1.tsv` : définition des checks de la suite `evals.2026-04-13.v1`
+- `.pata/evals/validation_baseline.v1` : baseline runtime locale (créée après pipeline green)
+- `.pata/evals/runs/evals.2026-04-13.v1.txt` : rapport d'exécution de référence
 
 ## Variables d'environnement
 ```bash
@@ -99,49 +64,3 @@ export PATA_TEMPERATURE=0.1
 export PATA_MAX_TOKENS=1200
 export PATA_LOW_POWER=0
 ```
-
-## Mapping modèle conseillé
-- 24+ GB RAM → `qwen2.5-coder:14b-instruct-q4_K_M`
-- 16+ GB RAM → `qwen2.5-coder:7b-instruct-q4_K_M`
-- <16 GB RAM → `deepseek-coder:6.7b-instruct-q4_K_M`
-
-## Workflow recommandé (Mac)
-```bash
-cargo run -- scan
-cargo run -- retrieve "error scanner"
-cargo run -- plan "fix scanner error handling"
-cargo run -- patch "fix scanner error handling"
-# récupérer patch-<id> dans la sortie
-cargo run -- review patch-<id>
-cargo run -- approve patch-<id> "approved-after-review"
-cargo run -- apply patch-<id>
-cargo run -- validate
-cargo run -- status
-```
-
-## Erreurs fréquentes
-1. `doctor` => `binary-missing`
-   - `brew install ollama`
-2. `doctor` => `daemon-unreachable`
-   - `ollama serve`
-3. `doctor` => `model-missing`
-   - `ollama pull <model>`
-4. `apply` refusé
-   - lancer `approve` pour créer `.pata/approvals/<id>.ok`
-5. `apply` rollback après validation
-   - corriger patch puis re-run pipeline
-
-
-## Fichiers d'état rapide (.pata/state)
-- `last_validate.txt`
-- `last_ollama_diagnostic.txt`
-- `last_status.txt`
-- `last_warning.txt`
-
-## Mémoire longue durée locale (.pata/memory)
-- `daily/YYYY-MM-DD.txt` : résumés de session/journée append-only
-- `weekly/YYYY-Www.txt` : consolidation hebdomadaire légère
-- `project_compact.txt` : snapshot compact du projet (open loops, lessons, patchs récents)
-- `open_loops.tsv` : backlog explicite des tâches ouvertes/fermées
-- `lessons.tsv` : leçons apprises structurées par catégorie
-- `sessions.log` : index des sessions résumées pour reprise ciblée
