@@ -35,6 +35,7 @@ Pour maximiser la crédibilité technique auprès d’une startup IA, les 3 prio
 
 ### Start here (best first impression)
 
+- 🎯 **3-minute recruiter demo:** [`quickstart/recruiter-demo/README.md`](quickstart/recruiter-demo/README.md)
 - 👉 **Comparative showcase first:** [`examples/multi_persona_demo.md`](examples/multi_persona_demo.md)
 - ⚡ **Flagship quickstart:** [`quickstart/flagship-demo/QUICKSTART.md`](quickstart/flagship-demo/QUICKSTART.md)
 - 📊 **Benchmark method/report:** [`benchmarks/public-comparison/BENCHMARKS.md`](benchmarks/public-comparison/BENCHMARKS.md)
