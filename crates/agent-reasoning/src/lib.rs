@@ -306,7 +306,7 @@ where
             .plan
             .steps
             .get(idx)
-            .ok_or_else(|| ValidationFailure::IncompletePlan {
+            .ok_or(ValidationFailure::IncompletePlan {
                 expected_min_steps: self.plan.steps.len(),
                 actual_steps: idx,
             })?;

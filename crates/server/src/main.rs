@@ -117,57 +117,38 @@ impl ModelProvider for DeterministicModelProvider {
         let is_personal = system_prompt.contains("structured personal productivity assistant");
         let is_smb = system_prompt.contains("SMB operations copilot");
 
+        if is_personal {
+            return Ok(format!(
+                "CONTEXT_SUMMARY: You want better weekly organization with limited time and energy.\n\
+PRIMARY_OBJECTIVE: Stabilize personal planning and focus on essential priorities.\n\
+ACTION_STRUCTURE: Plan weekly priorities on Sunday, set daily top-3 tasks, and review each evening.\n\
+RISK_CHECK: Main constraint is limited evening energy; keep tasks small and review trade-offs.\n\
+NEXT_STEP: Write tomorrow's top-3 tasks now and block 20 minutes for planning.\n\
+FINAL_ANSWER: Use a lightweight routine, adjust weekly, and keep the plan realistic with constraints.\n\
+TRACE_NOTE: {user_prompt}"
+            ));
+        }
+
+        if is_smb {
+            return Ok(format!(
+                "BUSINESS_CONTEXT: Small business with limited staff capacity and marketing budget.\n\
+OPERATIONAL_OBJECTIVE: Increase repeat customer visits in the next 30 days.\n\
+ACTION_BACKLOG: 1) Daily follow-up messages, 2) Weekly offer bundle, 3) Inventory focus on top sellers.\n\
+DECISION_SUPPORT: Assumption: retention actions will outperform broad paid ads under current budget.\n\
+FOLLOW_UP_METRICS: Repeat visits/week, offer conversion rate, average basket size.\n\
+FINAL_ANSWER: Execute low-cost retention actions first, track weekly metrics, and iterate quickly.\n\
+TRACE_NOTE: {user_prompt}"
+            ));
+        }
+
         if user_prompt.contains("Analyze") {
-            return if is_teacher {
-                Ok("LEARNING_OBJECTIVE: Identify what the learner should understand from the topic."
-                    .to_string())
-            } else if is_personal {
-                Ok(
-                    "CONTEXT_SUMMARY: Identify personal context, priorities and constraints."
-                        .to_string(),
-                )
-            } else if is_smb {
-                Ok(
-                    "BUSINESS_CONTEXT: Identify business operating context and key constraints."
-                        .to_string(),
-                )
-            } else {
-                Ok("ANALYSIS: Investigate error scope and constraints".to_string())
-            };
+            return Ok(format!("ANALYSIS: {user_prompt}"));
         }
         if user_prompt.contains("Hypothesis") {
-            return if is_teacher {
-                Ok("LEVEL_ADAPTATION: beginner level, use plain language and one concept at a time."
-                    .to_string())
-            } else if is_personal {
-                Ok(
-                    "PRIMARY_OBJECTIVE: Define one realistic priority objective for this period."
-                        .to_string(),
-                )
-            } else if is_smb {
-                Ok(
-                    "OPERATIONAL_OBJECTIVE: Define a concrete short-term business objective."
-                        .to_string(),
-                )
-            } else {
-                Ok("HYPOTHESIS: Root cause likely ownership mismatch".to_string())
-            };
+            return Ok(format!("HYPOTHESIS: {user_prompt}"));
         }
         if user_prompt.contains("ActionOrTest") {
-            return if is_teacher {
-                Ok("EXPLANATION: Explain core concept with one concrete example before adding nuance."
-                    .to_string())
-            } else if is_personal {
-                Ok("ACTION_STRUCTURE: Break the objective into concrete, feasible and time-bound steps."
-                    .to_string())
-            } else if is_smb {
-                Ok("ACTION_BACKLOG: Build a prioritized list of operational actions.".to_string())
-            } else {
-                Ok(
-                    "ACTION_PLAN: Apply scoped borrow refactor. VALIDATION: cargo check"
-                        .to_string(),
-                )
-            };
+            return Ok(format!("ACTION_PLAN: {user_prompt}"));
         }
         if user_prompt.contains("Validation") {
             return if is_teacher {
@@ -291,7 +272,6 @@ fn build_registry() -> ToolRegistry {
     registry
 }
 
-#[derive(Debug)]
 struct AppState {
     persona_name: String,
     agent: Arc<OrchestratedAgent<Box<dyn agent_traits::Persona>, DeterministicModelProvider>>,

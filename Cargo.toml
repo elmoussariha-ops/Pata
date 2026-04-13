@@ -19,7 +19,7 @@ edition = "2021"
 license = "MIT"
 version = "0.1.0"
 authors = ["Pata Contributors"]
-repository = "https://github.com/example/pata"
+repository = "https://github.com/elmoussariha-ops/Pata"
 
 [workspace.dependencies]
 anyhow = "1"
