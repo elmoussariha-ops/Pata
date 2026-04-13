@@ -1,3 +1,4 @@
+use crate::evals::EvalRun;
 use crate::fssec;
 use crate::lock;
 use crate::status::GlobalStatus;
@@ -20,18 +21,28 @@ fn ensure_state_dir(root: &Path) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-pub fn write_last_validate(root: &Path, report: &ValidationResult) -> Result<(), String> {
+pub fn write_last_validate(
+    root: &Path,
+    report: &ValidationResult,
+    eval_run: &EvalRun,
+) -> Result<(), String> {
     let _guard = lock::acquire(root, "state-write")?;
     let dir = ensure_state_dir(root)?;
     let path = dir.join("last_validate.txt");
     fs::write(
         &path,
         format!(
-            "ok={}\ncheck={}\nclippy={}\ntest={}\n",
+            "ok={}\ncheck={}\nclippy={}\ntest={}\neval_version={}\ntotal_duration_ms={}\nregressions={}\neval_suite={}\neval_score_pct={}\neval_blocked={}\n",
             report.ok(),
             report.check_ok,
             report.clippy_ok,
-            report.test_ok
+            report.test_ok,
+            sanitize(&report.eval_version),
+            report.total_duration_ms,
+            report.regression_alerts.len(),
+            sanitize(&eval_run.suite_version),
+            eval_run.score_pct,
+            eval_run.blocked
         ),
     )
     .map_err(|e| e.to_string())?;
