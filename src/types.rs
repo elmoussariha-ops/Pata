@@ -62,9 +62,12 @@ pub struct PatchReview {
 
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
+    pub eval_version: String,
     pub check_ok: bool,
     pub clippy_ok: bool,
     pub test_ok: bool,
+    pub total_duration_ms: u128,
+    pub regression_alerts: Vec<String>,
     pub logs: Vec<String>,
 }
 

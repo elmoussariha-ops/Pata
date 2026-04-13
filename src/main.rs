@@ -1,5 +1,6 @@
 mod ast_fingerprint;
 mod coder;
+mod evals;
 mod fssec;
 mod history;
 mod json;
@@ -686,17 +687,31 @@ fn command_apply(root: &Path, id: Option<&str>) -> Result<(), String> {
 
 fn command_validate(root: &Path) -> Result<(), String> {
     let report = tester::validate(root);
+    let eval_run = evals::run(root, &report);
     memory_engine::cache_validation_errors(root, &report)?;
-    state_store::write_last_validate(root, &report)?;
+    state_store::write_last_validate(root, &report, &eval_run)?;
     println!(
-        "validate: check={} clippy={} test={} ok={}",
+        "validate: check={} clippy={} test={} ok={} eval_version={} total_ms={} regressions={}",
         report.check_ok,
         report.clippy_ok,
         report.test_ok,
-        report.ok()
+        report.ok(),
+        report.eval_version,
+        report.total_duration_ms,
+        report.regression_alerts.len()
     );
+    println!(
+        "evals: suite={} score={} blocked={}",
+        eval_run.suite_version, eval_run.score_pct, eval_run.blocked
+    );
+    for case in &eval_run.cases {
+        println!(
+            "eval_case={} pass={} detail={}",
+            case.name, case.passed, case.detail
+        );
+    }
     history::log(root, "validate", &format!("ok={}", report.ok()))?;
-    if !report.ok() {
+    if !report.ok() || eval_run.blocked {
         let _ = long_memory::record_failure(
             root,
             "manual validate",
@@ -706,6 +721,7 @@ fn command_validate(root: &Path) -> Result<(), String> {
             &report.logs.join(" | "),
         );
         let _ = state_store::write_last_warning(root, "validate failed");
+        return Err("validate blocked by pipeline failure or eval regression".to_string());
     }
     Ok(())
 }
