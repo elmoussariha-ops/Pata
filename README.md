@@ -123,6 +123,24 @@ For practical end-to-end value evidence across real scenarios:
 
 👉 [`USE_CASE_PROOFS.md`](USE_CASE_PROOFS.md)
 
+## Reproducible eval suite (versioned)
+
+The project now includes a versioned eval suite that turns persona showcases into regression checks:
+
+- suite file: [`evals/suite.v1.json`](evals/suite.v1.json)
+- launch guide: [`evals/README.md`](evals/README.md)
+
+Run locally:
+
+```bash
+cargo run -p cli -- --config config/app.toml --eval-suite evals/suite.v1.json --eval-output /tmp/pata-evals.json
+```
+
+What this validates (minimal but real):
+- each persona scenario executes end-to-end through the orchestrated pipeline,
+- each output contains its required contract sections,
+- results are emitted in a stable JSON report so runs can be compared in CI.
+
 ## Help shape V3 — feedback wanted
 
 We are now in a public validation sprint and we actively want high-quality external feedback.

@@ -1,0 +1,66 @@
+{
+  "suite_id": "pata-persona-regression",
+  "suite_version": "v1",
+  "cases": [
+    {
+      "case_id": "developer_compile_error",
+      "persona": "developer",
+      "goal": "Fix rust compile error",
+      "require_accept_verification": false,
+      "minimum_confidence": 0.0,
+      "required_sections": [
+        "ANALYSIS:",
+        "HYPOTHESIS:",
+        "ACTION_PLAN:",
+        "VALIDATION:",
+        "DURABLE_RULES_CHECK:",
+        "FINAL_ANSWER:"
+      ]
+    },
+    {
+      "case_id": "teacher_ownership_beginner",
+      "persona": "teacher",
+      "goal": "Explain Rust ownership to a beginner",
+      "require_accept_verification": false,
+      "minimum_confidence": 0.0,
+      "required_sections": [
+        "LEARNING_OBJECTIVE:",
+        "LEVEL_ADAPTATION:",
+        "EXPLANATION:",
+        "GUIDED_PRACTICE:",
+        "UNDERSTANDING_CHECK:",
+        "FINAL_ANSWER:"
+      ]
+    },
+    {
+      "case_id": "personal_week_organization",
+      "persona": "personal",
+      "goal": "Help me organize my week",
+      "require_accept_verification": false,
+      "minimum_confidence": 0.0,
+      "required_sections": [
+        "CONTEXT_SUMMARY:",
+        "PRIMARY_OBJECTIVE:",
+        "ACTION_STRUCTURE:",
+        "RISK_CHECK:",
+        "NEXT_STEP:",
+        "FINAL_ANSWER:"
+      ]
+    },
+    {
+      "case_id": "smb_retention_budget",
+      "persona": "smb",
+      "goal": "Improve customer retention with limited budget",
+      "require_accept_verification": false,
+      "minimum_confidence": 0.0,
+      "required_sections": [
+        "BUSINESS_CONTEXT:",
+        "OPERATIONAL_OBJECTIVE:",
+        "ACTION_BACKLOG:",
+        "DECISION_SUPPORT:",
+        "FOLLOW_UP_METRICS:",
+        "FINAL_ANSWER:"
+      ]
+    }
+  ]
+}
