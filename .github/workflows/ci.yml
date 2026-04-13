@@ -28,3 +28,6 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace
+
+      - name: persona eval suite (regression gate)
+        run: cargo run -p cli -- --config config/app.toml --eval-suite evals/suite.v1.json --eval-output /tmp/pata-evals-ci.json

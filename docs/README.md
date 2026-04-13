@@ -10,6 +10,8 @@
 - [Public feedback sprint pack](../PUBLIC_FEEDBACK.md)
 - [Launch visibility pack](../LAUNCH_VISIBILITY.md)
 - [Use case proofs](../USE_CASE_PROOFS.md)
+- [Suite d'évaluation versionnée](../evals/suite.v1.json)
+- [Guide d'exécution des evals](../evals/README.md)
 - [Quickstart flagship demo](../quickstart/flagship-demo/QUICKSTART.md)
 - [Public comparison benchmarks](../benchmarks/public-comparison/BENCHMARKS.md)
 - [Exemple persona developer](../examples/persona_developer_showcase.md)

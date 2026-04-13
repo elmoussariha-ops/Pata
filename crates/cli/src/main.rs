@@ -1,4 +1,8 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use agent_core::OrchestratedAgent;
 use agent_traits::{Agent, ExecutionContext, Persona};
@@ -27,6 +31,16 @@ struct Cli {
     persona: Option<String>,
     #[arg(long, help = "List available personas and exit")]
     list_personas: bool,
+    #[arg(
+        long,
+        help = "Run a versioned evaluation suite from a JSON file instead of a single goal"
+    )]
+    eval_suite: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "Optional path to write evaluation results as JSON (used with --eval-suite)"
+    )]
+    eval_output: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +67,55 @@ struct RuntimeResponse {
     answer: String,
     confidence: f32,
     structured_output: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EvaluationSuite {
+    suite_id: String,
+    suite_version: String,
+    cases: Vec<EvalCaseSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EvalCaseSpec {
+    case_id: String,
+    persona: String,
+    goal: String,
+    require_accept_verification: bool,
+    minimum_confidence: f32,
+    required_sections: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct EvalCaseResult {
+    case_id: String,
+    persona: String,
+    goal: String,
+    passed: bool,
+    verification_status: String,
+    confidence: f32,
+    answer_non_empty: bool,
+    sections_present: Vec<String>,
+    sections_missing: Vec<String>,
+    duration_ms: u128,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct EvalSuiteSummary {
+    total_cases: usize,
+    passed_cases: usize,
+    failed_cases: usize,
+    pass_rate: f32,
+}
+
+#[derive(Debug, Serialize)]
+struct EvalSuiteResult {
+    suite_id: String,
+    suite_version: String,
+    generated_at_epoch_sec: u64,
+    summary: EvalSuiteSummary,
+    cases: Vec<EvalCaseResult>,
 }
 
 fn validate_goal(goal: &str) -> Result<()> {
@@ -102,6 +165,150 @@ fn print_personas() -> Result<()> {
     Ok(())
 }
 
+fn load_eval_suite(path: &PathBuf) -> Result<EvaluationSuite> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("unable to read eval suite at {}", path.display()))?;
+    let suite: EvaluationSuite =
+        serde_json::from_str(&raw).context("invalid eval suite JSON format")?;
+
+    if suite.suite_id.trim().is_empty() || suite.suite_version.trim().is_empty() {
+        anyhow::bail!("eval suite must include non-empty suite_id and suite_version");
+    }
+
+    if suite.cases.is_empty() {
+        anyhow::bail!("eval suite must include at least one case");
+    }
+
+    for case in &suite.cases {
+        validate_goal(&case.goal)
+            .with_context(|| format!("invalid goal in case {}", case.case_id))?;
+        if !PersonaRegistry::exists(case.persona.trim()) {
+            anyhow::bail!(
+                "invalid persona '{}' in case '{}': unknown persona",
+                case.persona,
+                case.case_id
+            );
+        }
+        if !(0.0..=1.0).contains(&case.minimum_confidence) {
+            anyhow::bail!(
+                "invalid minimum_confidence in case '{}': expected value in [0, 1]",
+                case.case_id
+            );
+        }
+    }
+
+    Ok(suite)
+}
+
+async fn run_eval_suite(config: &AppConfig, suite: EvaluationSuite) -> Result<EvalSuiteResult> {
+    let mut results = Vec::new();
+
+    for case in suite.cases {
+        let started = Instant::now();
+        let case_result = async {
+            let persona = PersonaRegistry::create(&case.persona)
+                .with_context(|| format!("unable to create persona '{}'", case.persona))?;
+            let agent =
+                OrchestratedAgent::new(persona, DeterministicModelProvider, build_tool_registry())
+                    .context("unable to initialize orchestrated agent")?;
+            let run_result = agent
+                .run(&case.goal, ExecutionContext::default())
+                .await
+                .context("agent execution failed")?;
+
+            let structured = run_result.structured_output.unwrap_or_default();
+            let verification_status = structured["verification_status"]
+                .as_str()
+                .unwrap_or("Unknown")
+                .to_string();
+            let raw_response = structured["raw_response"].as_str().unwrap_or("");
+            let sections_present = case
+                .required_sections
+                .iter()
+                .filter(|section| raw_response.contains(section.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let sections_missing = case
+                .required_sections
+                .iter()
+                .filter(|section| !raw_response.contains(section.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let answer_non_empty = !run_result.answer.trim().is_empty();
+            let verification_ok =
+                !case.require_accept_verification || verification_status == "Accept";
+            let confidence_ok = run_result.confidence >= case.minimum_confidence;
+            let passed =
+                answer_non_empty && verification_ok && confidence_ok && sections_missing.is_empty();
+
+            Ok::<EvalCaseResult, anyhow::Error>(EvalCaseResult {
+                case_id: case.case_id.clone(),
+                persona: case.persona.clone(),
+                goal: case.goal.clone(),
+                passed,
+                verification_status,
+                confidence: run_result.confidence,
+                answer_non_empty,
+                sections_present,
+                sections_missing,
+                duration_ms: started.elapsed().as_millis(),
+                error: None,
+            })
+        }
+        .await;
+
+        match case_result {
+            Ok(result) => results.push(result),
+            Err(err) => results.push(EvalCaseResult {
+                case_id: case.case_id,
+                persona: case.persona,
+                goal: case.goal,
+                passed: false,
+                verification_status: "ExecutionError".to_string(),
+                confidence: 0.0,
+                answer_non_empty: false,
+                sections_present: Vec::new(),
+                sections_missing: case.required_sections,
+                duration_ms: started.elapsed().as_millis(),
+                error: Some(err.to_string()),
+            }),
+        }
+    }
+
+    let total_cases = results.len();
+    let passed_cases = results.iter().filter(|case| case.passed).count();
+    let failed_cases = total_cases.saturating_sub(passed_cases);
+    let summary = EvalSuiteSummary {
+        total_cases,
+        passed_cases,
+        failed_cases,
+        pass_rate: if total_cases == 0 {
+            0.0
+        } else {
+            passed_cases as f32 / total_cases as f32
+        },
+    };
+
+    let generated_at_epoch_sec = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let report = EvalSuiteResult {
+        suite_id: suite.suite_id,
+        suite_version: suite.suite_version,
+        generated_at_epoch_sec,
+        summary,
+        cases: results,
+    };
+
+    if !config.model.mode.eq("deterministic") {
+        anyhow::bail!("eval suite only supports deterministic mode");
+    }
+
+    Ok(report)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
@@ -110,14 +317,45 @@ async fn main() -> Result<()> {
         return print_personas();
     }
 
+    let config = load_config(&args.config)?;
+    ensure_deterministic_mode(&config.model.mode)?;
+
+    if let Some(suite_path) = &args.eval_suite {
+        let suite = load_eval_suite(suite_path)?;
+        let report = run_eval_suite(&config, suite).await?;
+
+        let report_json = serde_json::to_string_pretty(&report)?;
+        println!("{report_json}");
+
+        if let Some(output_path) = &args.eval_output {
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!(
+                        "unable to create eval output directory {}",
+                        parent.display()
+                    )
+                })?;
+            }
+            fs::write(output_path, &report_json).with_context(|| {
+                format!("unable to write eval output at {}", output_path.display())
+            })?;
+        }
+
+        if report.summary.failed_cases > 0 {
+            anyhow::bail!(
+                "evaluation suite failed: {} / {} cases passed",
+                report.summary.passed_cases,
+                report.summary.total_cases
+            );
+        }
+        return Ok(());
+    }
+
     let goal = args
         .goal
         .as_deref()
-        .context("missing --goal (or use --list-personas)")?;
+        .context("missing --goal (or use --list-personas or --eval-suite)")?;
     validate_goal(goal).context("invalid --goal input")?;
-
-    let config = load_config(&args.config)?;
-    ensure_deterministic_mode(&config.model.mode)?;
 
     let persona_name = args
         .persona

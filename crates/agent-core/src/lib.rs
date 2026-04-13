@@ -383,22 +383,22 @@ where
                 ReasoningStep::new(
                     ReasoningPhase::Analyze,
                     "Clarify user objective and constraints",
-                    "problem statement",
+                    "analysis learning_objective context_summary business_context",
                 ),
                 ReasoningStep::new(
                     ReasoningPhase::Hypothesis,
                     "Propose best approach",
-                    "root cause hypothesis",
+                    "hypothesis level_adaptation primary_objective operational_objective",
                 ),
                 ReasoningStep::new(
                     ReasoningPhase::ActionOrTest,
                     "Propose concrete action or test",
-                    "test result",
+                    "action_plan explanation action_structure action_backlog",
                 ),
                 ReasoningStep::new(
                     ReasoningPhase::Validation,
                     "Validate with checks and durable rules",
-                    "validation report",
+                    "validation final_answer understanding_check risk_check follow_up_metrics",
                 ),
             ],
         )
@@ -750,15 +750,15 @@ mod tests {
             _context: &ExecutionContext,
         ) -> Result<String> {
             if user_prompt.contains("Analyze") {
-                return Ok("problem statement extracted".to_string());
+                return Ok("analysis: problem statement extracted".to_string());
             }
             if user_prompt.contains("Hypothesis") {
-                return Ok("root cause hypothesis: ownership mismatch".to_string());
+                return Ok("hypothesis: root cause ownership mismatch".to_string());
             }
             if user_prompt.contains("ActionOrTest") {
-                return Ok("test result confirms root cause hypothesis".to_string());
+                return Ok("action_plan: test result confirms root cause hypothesis".to_string());
             }
-            Ok("validation report confirms test result and hypothesis".to_string())
+            Ok("validation report final_answer confirms test result and hypothesis".to_string())
         }
     }
 
