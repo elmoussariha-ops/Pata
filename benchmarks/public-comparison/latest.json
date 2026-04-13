@@ -1,0 +1,67 @@
+{
+  "generated_from": "benchmarks/public-comparison/run_benchmark.py",
+  "runs_per_scenario": 5,
+  "quality_gates": {
+    "min_verification_rate": 0.8,
+    "max_p95_latency_ms": 1200.0
+  },
+  "scenarios": [
+    {
+      "key": "code_review",
+      "title": "Code review",
+      "persona": "developer",
+      "goal": "Review a Rust patch for ownership and safety regressions",
+      "status": "OK (5/5)",
+      "ok_runs": 5,
+      "total_runs": 5,
+      "execution_ms_avg": "491.44",
+      "execution_ms_p50": "481.21",
+      "execution_ms_p95": "513.66",
+      "execution_ms_stddev": "16.32",
+      "confidence_avg": "0.75",
+      "verification_rate": "0%",
+      "trace_events_avg": "14.00",
+      "stability": "stable",
+      "quality_gate": "FAIL",
+      "notes": ""
+    },
+    {
+      "key": "structured_tutoring",
+      "title": "Structured tutoring",
+      "persona": "teacher",
+      "goal": "Explain Rust ownership to a beginner with one guided exercise",
+      "status": "OK (5/5)",
+      "ok_runs": 5,
+      "total_runs": 5,
+      "execution_ms_avg": "482.06",
+      "execution_ms_p50": "482.28",
+      "execution_ms_p95": "490.31",
+      "execution_ms_stddev": "7.39",
+      "confidence_avg": "1.00",
+      "verification_rate": "100%",
+      "trace_events_avg": "13.00",
+      "stability": "stable",
+      "quality_gate": "PASS",
+      "notes": ""
+    },
+    {
+      "key": "smb_support_workflow",
+      "title": "SMB support workflow",
+      "persona": "smb",
+      "goal": "Plan a weekly SMB support workflow to improve customer retention",
+      "status": "OK (5/5)",
+      "ok_runs": 5,
+      "total_runs": 5,
+      "execution_ms_avg": "487.78",
+      "execution_ms_p50": "490.31",
+      "execution_ms_p95": "495.64",
+      "execution_ms_stddev": "8.66",
+      "confidence_avg": "1.00",
+      "verification_rate": "100%",
+      "trace_events_avg": "13.00",
+      "stability": "stable",
+      "quality_gate": "PASS",
+      "notes": ""
+    }
+  ]
+}
