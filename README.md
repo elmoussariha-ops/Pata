@@ -33,6 +33,13 @@ Pour maximiser la crédibilité technique auprès d’une startup IA, les 3 prio
    - ajouter versioning API, règles de compatibilité, et SLO de base (latence/taux d’échec).
    - objectif: rassurer une équipe produit/infra sur l’intégration en environnement réel.
 
+### GitHub repo hygiene (ready to publish)
+
+- CI workflow on `main`: `.github/workflows/ci.yml`
+- About metadata copy/paste: `docs/github_about.md`
+- First release draft (`v0.1.0`): `docs/release_v0.1.0.md`
+- Initial changelog: `CHANGELOG.md`
+
 ### Start here (best first impression)
 
 - 👉 **Comparative showcase first:** [`examples/multi_persona_demo.md`](examples/multi_persona_demo.md)

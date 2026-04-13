@@ -1,15 +1,17 @@
-name: Rust CI
+name: CI
 
 on:
   push:
     branches:
       - main
-      - master
   pull_request:
+    branches:
+      - main
 
 jobs:
-  checks:
+  rust:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,11 +22,11 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: cargo fmt
+      - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Lint (clippy)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: cargo test
+      - name: Run tests
         run: cargo test --workspace
