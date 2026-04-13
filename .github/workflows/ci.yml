@@ -17,5 +17,5 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Tests
         run: cargo test --all-targets --quiet
-      - name: Validate pipeline
-        run: cargo run -- validate
+      - name: Run versioned evals
+        run: cargo run -- evals

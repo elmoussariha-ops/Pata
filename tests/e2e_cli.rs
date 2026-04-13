@@ -82,6 +82,11 @@ fn full_cli_pipeline_happy_path_with_mock_patch() {
     run_ok(&repo, &["approve", &patch_id, "ok"], &envs);
     run_ok(&repo, &["apply", &patch_id], &envs);
     run_ok(&repo, &["validate"], &envs);
+    let eval_out = run_ok(&repo, &["evals"], &envs);
+    assert!(eval_out.contains("evals: suite=evals.2026-04-13.v1"));
+    assert!(repo
+        .join(".pata/evals/runs/evals.2026-04-13.v1.txt")
+        .exists());
     let status_out = run_ok(&repo, &["status"], &envs);
     assert!(status_out.contains("low_power=true"));
 

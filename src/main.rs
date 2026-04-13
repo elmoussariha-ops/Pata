@@ -105,6 +105,7 @@ fn run() -> Result<(), String> {
         "approve" => command_approve(&root, rest.first().map(|s| s.as_str()), rest.get(1).map(|s| s.as_str()).unwrap_or("manual-approved")),
         "apply" => command_apply(&root, rest.first().map(|s| s.as_str())),
         "validate" => command_validate(&root),
+        "evals" => command_evals(&root),
         "status" => command_status(&root, low_power),
         "end-session" | "daily-summary" => command_end_session(&root),
         "resume-session" => command_resume_session(&root),
@@ -125,7 +126,7 @@ fn run() -> Result<(), String> {
         "model-status" => command_model_status(),
         "demo" => command_demo(&root, low_power),
         "tui" => command_tui(&root, low_power),
-        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q> [--explain-retrieval]|plan <goal>|patch <goal>|review <id> [--explain-risk]|approve <id> [decision]|apply <id>|validate|status|end-session|daily-summary|resume-session|watch [cycles]|multiverse <goal> [2-4]|ast-fingerprint [function_name]|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|failures|failure-recent|promote-failure <id>|explain-open-loop <id>|similar-functions <fn_name>|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
+        _ => Err("usage: pata [--low-power] [--verbose] [scan|retrieve <q> [--explain-retrieval]|plan <goal>|patch <goal>|review <id> [--explain-risk]|approve <id> [decision]|apply <id>|validate|evals|status|end-session|daily-summary|resume-session|watch [cycles]|multiverse <goal> [2-4]|ast-fingerprint [function_name]|memory <show|recent|open-loops [--priority|--recent]|lessons|daily|weekly|digest|failures|failure-recent|promote-failure <id>|explain-open-loop <id>|similar-functions <fn_name>|add-open-loop <category> <detail> [priority] [module] [impact]|resolve-open-loop <id>|add-lesson <category> <detail>>|doctor|smoke-test|low-power-status|ollama-check|ollama-status|model-status|demo|tui]".to_string()),
     }
 }
 
@@ -688,6 +689,7 @@ fn command_apply(root: &Path, id: Option<&str>) -> Result<(), String> {
 fn command_validate(root: &Path) -> Result<(), String> {
     let report = tester::validate(root);
     let eval_run = evals::run(root, &report);
+    let eval_path = evals::persist(root, &report, &eval_run)?;
     memory_engine::cache_validation_errors(root, &report)?;
     state_store::write_last_validate(root, &report, &eval_run)?;
     println!(
@@ -704,6 +706,7 @@ fn command_validate(root: &Path) -> Result<(), String> {
         "evals: suite={} score={} blocked={}",
         eval_run.suite_version, eval_run.score_pct, eval_run.blocked
     );
+    println!("evals_report={eval_path}");
     for case in &eval_run.cases {
         println!(
             "eval_case={} pass={} detail={}",
@@ -724,6 +727,10 @@ fn command_validate(root: &Path) -> Result<(), String> {
         return Err("validate blocked by pipeline failure or eval regression".to_string());
     }
     Ok(())
+}
+
+fn command_evals(root: &Path) -> Result<(), String> {
+    command_validate(root)
 }
 
 fn command_status(root: &Path, low_power: bool) -> Result<(), String> {
