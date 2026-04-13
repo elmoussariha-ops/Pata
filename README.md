@@ -6,98 +6,33 @@
 ![Personas](https://img.shields.io/badge/Personas-4-success)
 ![CI](https://github.com/elmoussariha-ops/Pata/actions/workflows/ci.yml/badge.svg)
 
-## 🚀 Build specialized agents you can actually inspect, verify, and iterate
+## Build specialized agents you can inspect, verify, and improve
 
-**Tagline:** _Rust-first platform for specialized, verifiable AI agents._
-
-Pata is an open-source Rust platform for teams who want more than generic agent wrappers:
-- persona specialization,
+**Pata** is a Rust-first platform for teams that need **specialized agents** with:
+- persona-specific contracts,
 - structured reasoning,
 - explicit verification,
-- execution observability,
+- traceable execution,
 - deterministic evaluation.
 
-**Current state (honest):** V2 foundation is in public validation. Runtime integrations are intentionally minimal.
+**Honest status (April 2026):** solid V2 foundation, still lightweight on production integrations.
 
-## Priorités crédibilité (startup IA)
+## Why this is different
 
-Pour maximiser la crédibilité technique auprès d’une startup IA, les 3 priorités sont :
+- **Persona-first architecture:** `developer`, `teacher`, `personal`, `smb` are first-class runtime paths.
+- **Reasoning + verification pipeline:** not hidden behind one generic prompt.
+- **Observable outputs:** execution summary + trace for auditability.
+- **Deterministic eval path:** reproducible comparisons instead of vibe-based demos.
+- **Clear scope boundaries:** explicit “implemented vs next” to avoid overclaiming.
 
-1. **CI robuste et bloquante (PR gate)**
-   - formatage, lint strict et tests exécutés sur chaque PR.
-   - objectif: réduire le risque d’intégration et accélérer la review technique.
-2. **Évaluation continue orientée produit**
-   - transformer les use cases en suite d’évals versionnée avec seuils de régression.
-   - objectif: démontrer la stabilité des personas sur des scénarios métier.
-3. **Contrats d’API + fiabilité opérationnelle**
-   - ajouter versioning API, règles de compatibilité, et SLO de base (latence/taux d’échec).
-   - objectif: rassurer une équipe produit/infra sur l’intégration en environnement réel.
+## Start here (90-second recruiter path)
 
-### Start here (best first impression)
-
-- 👉 **Comparative showcase first:** [`examples/multi_persona_demo.md`](examples/multi_persona_demo.md)
-- ⚡ **Flagship quickstart:** [`quickstart/flagship-demo/QUICKSTART.md`](quickstart/flagship-demo/QUICKSTART.md)
-- 📊 **Benchmark method/report:** [`benchmarks/public-comparison/BENCHMARKS.md`](benchmarks/public-comparison/BENCHMARKS.md)
-- 🧭 **5-minute product view:** [`PRODUCT_OVERVIEW.md`](PRODUCT_OVERVIEW.md)
-
-### Why developers should star this repo
-
-If this repository is useful to you, starring helps in very concrete ways:
-- it increases visibility for a Rust-first, verifiable-agent approach,
-- it helps attract high-signal contributors and reviewers,
-- it accelerates external feedback loops that improve reliability,
-- it signals demand for transparent agent architecture over black-box demos.
-
-### What makes this project different
-
-- **Persona-first contracts**, not one generic prompt path.
-- **Reasoning + verification pipeline** as explicit runtime structure.
-- **Traceable execution outputs** (summary + trace) for auditability.
-- **Deterministic evaluation path** focused on reproducibility.
-- **Clear “implemented vs next” boundaries** to avoid overclaiming.
-
-### Social proof / momentum (early phase)
-
-We are currently in an **early external validation window**:
-- first technical discussions are starting,
-- launch artifacts are live and shareable,
-- feedback and signal capture loops are in place.
-
-No traction numbers are claimed in this README. Public signals are tracked in:
-- [`POST_LAUNCH_SIGNAL_LOG.md`](POST_LAUNCH_SIGNAL_LOG.md)
-- [`PUBLIC_SIGNAL_TRACKER.md`](PUBLIC_SIGNAL_TRACKER.md)
-
-### Road to V3 (what’s next)
-
-Near-term priority is **traction + adoption learning**, not feature inflation:
-- convert visitors into real trials (quickstart + benchmark),
-- capture first external friction points,
-- prioritize roadmap moves only with observed evidence.
-
-References:
-- [`LIVE_LAUNCH_CHECKLIST.md`](LIVE_LAUNCH_CHECKLIST.md)
-- [`REAL_LAUNCH_EXECUTION.md`](REAL_LAUNCH_EXECUTION.md)
-- [`V4_TRANSITION.md`](V4_TRANSITION.md)
-
-## Launch snapshot (V2)
-
-Pata is currently a **serious launch-ready foundation**, not a finished enterprise product:
-- ✅ Rust-first architecture with clear crate boundaries.
-- ✅ Multi-persona platform (`developer`, `teacher`, `personal`, `smb`) via registry.
-- ✅ Deterministic runtime surfaces (CLI + HTTP server).
-- ✅ Observable orchestrated pipeline (memory → reasoning → verification → evaluation).
-- ⚠️ Deliberately minimal runtime integrations (no enterprise multi-tenant/persistence stack yet).
-
-## Demo comparative (à voir en premier)
-
-👉 **Si vous découvrez le projet, commencez par la démo comparative** :
-[`examples/multi_persona_demo.md`](examples/multi_persona_demo.md)
-
-Elle montre, sur des scénarios proches, la différence concrète entre `developer`, `teacher`, `personal` et `smb`, tout en restant fidèle au pipeline réel (mémoire, reasoning, vérification, confiance finale).
+1. **Quick product signal:** [`examples/multi_persona_demo.md`](examples/multi_persona_demo.md)
+2. **Run in 3 minutes:** [`quickstart/flagship-demo/QUICKSTART.md`](quickstart/flagship-demo/QUICKSTART.md)
+3. **See benchmark method:** [`benchmarks/public-comparison/BENCHMARKS.md`](benchmarks/public-comparison/BENCHMARKS.md)
+4. **Read use-case evidence:** [`USE_CASE_PROOFS.md`](USE_CASE_PROOFS.md)
 
 ## Quickstart flagship (3 minutes)
-
-Pour un effet “wow” immédiat avec la persona `developer` :
 
 ```bash
 ./quickstart/flagship-demo/run.sh
@@ -105,23 +40,49 @@ Pour un effet “wow” immédiat avec la persona `developer` :
 ./quickstart/flagship-demo/run.sh --offline
 ```
 
-Ce one-liner affiche directement input, raisonnement structuré, vérification, score de confiance, trace observable et output final.
+This run shows input, structured reasoning, verification, confidence score, trace, and final output.
 
 ## Public comparison benchmark
-
-To generate a shareable benchmark report for GitHub/HN/communities:
 
 ```bash
 python3 benchmarks/public-comparison/run_benchmark.py
 ```
 
-This produces `benchmarks/public-comparison/REPORT.md` with runtime-derived metrics only (time, confidence, verification, trace, stability), without inventing values.
+Generates `benchmarks/public-comparison/REPORT.md` from runtime-derived metrics (time, confidence, verification, trace, stability) without invented values.
 
-## Use case proofs
+## Use-case proofs (product evidence)
 
-For practical end-to-end value evidence across real scenarios:
+For end-to-end examples on concrete workflows:
 
 👉 [`USE_CASE_PROOFS.md`](USE_CASE_PROOFS.md)
+
+## Launch snapshot (V2)
+
+Pata is a **launch-ready technical foundation**, not a finished enterprise suite:
+- ✅ Rust-first modular architecture with clear crates.
+- ✅ Multi-persona runtime via `persona-registry`.
+- ✅ Deterministic entry points (CLI + HTTP server).
+- ✅ Orchestrated pipeline (memory → reasoning → verification → evaluation).
+- ⚠️ Minimal enterprise integrations for now (multi-tenant/persistence still limited).
+
+## Proof > promises
+
+We deliberately avoid vanity traction claims in this README.
+Public launch signals and feedback logs are tracked in:
+- [`POST_LAUNCH_SIGNAL_LOG.md`](POST_LAUNCH_SIGNAL_LOG.md)
+- [`PUBLIC_SIGNAL_TRACKER.md`](PUBLIC_SIGNAL_TRACKER.md)
+
+## What comes next (without feature inflation)
+
+Near-term focus is adoption learning:
+- convert visits into real quickstart runs,
+- collect external friction points,
+- prioritize roadmap moves with observed evidence.
+
+References:
+- [`LIVE_LAUNCH_CHECKLIST.md`](LIVE_LAUNCH_CHECKLIST.md)
+- [`REAL_LAUNCH_EXECUTION.md`](REAL_LAUNCH_EXECUTION.md)
+- [`V4_TRANSITION.md`](V4_TRANSITION.md)
 
 ## Help shape V3 — feedback wanted
 
