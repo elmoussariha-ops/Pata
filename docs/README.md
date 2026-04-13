@@ -5,6 +5,8 @@
 - [Visual architecture overview](../VISUAL_OVERVIEW.md)
 - [Guide de contribution](../CONTRIBUTING.md)
 - [Roadmap publique](../ROADMAP.md)
+- [Changelog](../CHANGELOG.md)
+- [Release notes v0.1.0](releases/v0.1.0.md)
 - [Launch note V2](launch_v2.md)
 - [Public launch pack V2](public_launch_pack.md)
 - [Public feedback sprint pack](../PUBLIC_FEEDBACK.md)
