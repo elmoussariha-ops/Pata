@@ -11,7 +11,9 @@ use axum::{
     Json, Router,
 };
 use persona_registry::PersonaRegistry;
-use runtime_support::{build_tool_registry, ensure_deterministic_mode, DeterministicModelProvider};
+use runtime_support::{
+    build_tool_registry, ensure_deterministic_mode, validate_goal, DeterministicModelProvider,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -98,22 +100,21 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn validate_goal(goal: &str) -> Result<(), ApiError> {
-    if goal.trim().is_empty() {
-        return Err(ApiError {
-            status: StatusCode::BAD_REQUEST,
-            code: "INVALID_GOAL",
-            message: "goal must not be empty".to_string(),
-        });
-    }
-    if goal.len() > 2_000 {
-        return Err(ApiError {
-            status: StatusCode::BAD_REQUEST,
-            code: "GOAL_TOO_LONG",
-            message: "goal is too long (max 2000 chars)".to_string(),
-        });
-    }
-    Ok(())
+fn validate_goal_request(goal: &str) -> Result<(), ApiError> {
+    validate_goal(goal).map_err(|err| {
+        let message = err.to_string();
+        let (status, code) = if message.contains("too long") {
+            (StatusCode::BAD_REQUEST, "GOAL_TOO_LONG")
+        } else {
+            (StatusCode::BAD_REQUEST, "INVALID_GOAL")
+        };
+
+        ApiError {
+            status,
+            code,
+            message,
+        }
+    })
 }
 
 fn load_config(path: &PathBuf) -> Result<AppConfig> {
@@ -172,7 +173,7 @@ async fn run_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RunRequest>,
 ) -> Result<Json<RunResponse>, ApiError> {
-    validate_goal(&payload.goal)?;
+    validate_goal_request(&payload.goal)?;
 
     let result = state
         .agent
