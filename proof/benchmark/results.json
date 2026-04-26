@@ -1,0 +1,50 @@
+{
+  "benchmark_id": "proof-benchmark-v1",
+  "generated_at_utc": "2026-04-26T15:24:10.228815+00:00",
+  "deterministic_mode": true,
+  "tasks_count": 4,
+  "summary": {
+    "success_rate": 1.0,
+    "verification_pass_rate": 0.75,
+    "average_confidence": 0.938,
+    "average_duration_ms": 477.42
+  },
+  "tasks": [
+    {
+      "task_id": "dev_code_review",
+      "success": true,
+      "steps_count": 4,
+      "tool_calls_count": 0,
+      "verification_passed": false,
+      "final_confidence": 0.75,
+      "duration_ms": 479.25
+    },
+    {
+      "task_id": "teacher_ownership_lesson",
+      "success": true,
+      "steps_count": 4,
+      "tool_calls_count": 0,
+      "verification_passed": true,
+      "final_confidence": 1.0,
+      "duration_ms": 501.55
+    },
+    {
+      "task_id": "smb_support_workflow",
+      "success": true,
+      "steps_count": 4,
+      "tool_calls_count": 0,
+      "verification_passed": true,
+      "final_confidence": 1.0,
+      "duration_ms": 469.32
+    },
+    {
+      "task_id": "personal_weekly_focus",
+      "success": true,
+      "steps_count": 4,
+      "tool_calls_count": 0,
+      "verification_passed": true,
+      "final_confidence": 1.0,
+      "duration_ms": 459.56
+    }
+  ]
+}

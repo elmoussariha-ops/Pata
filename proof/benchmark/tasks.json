@@ -1,0 +1,22 @@
+[
+  {
+    "task_id": "dev_code_review",
+    "persona": "developer",
+    "goal": "Review a Rust patch for ownership and safety regressions"
+  },
+  {
+    "task_id": "teacher_ownership_lesson",
+    "persona": "teacher",
+    "goal": "Explain Rust ownership to a beginner with one guided exercise"
+  },
+  {
+    "task_id": "smb_support_workflow",
+    "persona": "smb",
+    "goal": "Plan a weekly SMB support workflow to improve customer retention"
+  },
+  {
+    "task_id": "personal_weekly_focus",
+    "persona": "personal",
+    "goal": "Build a weekly personal focus plan balancing work priorities and recovery"
+  }
+]
