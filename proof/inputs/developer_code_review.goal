@@ -1,0 +1,1 @@
+Fix rust compile error in ownership handling in the payments module, then provide a safe patch strategy and verification checklist.
