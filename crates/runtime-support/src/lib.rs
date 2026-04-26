@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 pub const DETERMINISTIC_MODE: &str = "deterministic";
+pub const MAX_GOAL_LEN: usize = 2_000;
 
 #[derive(Debug, Clone)]
 pub struct DeterministicModelProvider;
@@ -169,6 +170,18 @@ pub fn ensure_deterministic_mode(mode: &str) -> Result<()> {
     )
 }
 
+pub fn validate_goal(goal: &str) -> Result<()> {
+    if goal.trim().is_empty() {
+        bail!("goal must not be empty")
+    }
+
+    if goal.len() > MAX_GOAL_LEN {
+        bail!("goal is too long (max {MAX_GOAL_LEN} chars)")
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +203,16 @@ mod tests {
         ] {
             assert!(registry.contains(tool));
         }
+    }
+
+    #[test]
+    fn validate_goal_rejects_empty_and_too_long_inputs() {
+        assert!(validate_goal("  ").is_err());
+        assert!(validate_goal(&"x".repeat(MAX_GOAL_LEN + 1)).is_err());
+    }
+
+    #[test]
+    fn validate_goal_accepts_valid_input() {
+        assert!(validate_goal("Fix rust compile error").is_ok());
     }
 }

@@ -9,7 +9,9 @@ use agent_traits::{Agent, ExecutionContext, Persona};
 use anyhow::{Context, Result};
 use clap::Parser;
 use persona_registry::PersonaRegistry;
-use runtime_support::{build_tool_registry, ensure_deterministic_mode, DeterministicModelProvider};
+use runtime_support::{
+    build_tool_registry, ensure_deterministic_mode, validate_goal, DeterministicModelProvider,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -118,16 +120,6 @@ struct EvalSuiteResult {
     cases: Vec<EvalCaseResult>,
 }
 
-fn validate_goal(goal: &str) -> Result<()> {
-    if goal.trim().is_empty() {
-        anyhow::bail!("goal must not be empty")
-    }
-    if goal.len() > 2_000 {
-        anyhow::bail!("goal is too long (max 2000 chars)")
-    }
-    Ok(())
-}
-
 fn load_config(path: &PathBuf) -> Result<AppConfig> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("unable to read config at {}", path.display()))?;
@@ -179,7 +171,11 @@ fn load_eval_suite(path: &PathBuf) -> Result<EvaluationSuite> {
         anyhow::bail!("eval suite must include at least one case");
     }
 
+    let mut seen_case_ids = std::collections::HashSet::new();
     for case in &suite.cases {
+        if !seen_case_ids.insert(case.case_id.clone()) {
+            anyhow::bail!("duplicate case_id found in eval suite: '{}'", case.case_id);
+        }
         validate_goal(&case.goal)
             .with_context(|| format!("invalid goal in case {}", case.case_id))?;
         if !PersonaRegistry::exists(case.persona.trim()) {
@@ -417,6 +413,41 @@ mod tests {
         assert!(list.iter().any(|p| p.name == "teacher"));
         assert!(list.iter().any(|p| p.name == "personal"));
         assert!(list.iter().any(|p| p.name == "smb"));
+    }
+
+    #[test]
+    fn reject_eval_suite_with_duplicate_case_ids() {
+        let path = PathBuf::from("/tmp/pata_cli_eval_suite_test.json");
+        fs::write(
+            &path,
+            r#"{
+  "suite_id": "suite",
+  "suite_version": "1",
+  "cases": [
+    {
+      "case_id": "dup",
+      "persona": "developer",
+      "goal": "Fix compile error",
+      "require_accept_verification": false,
+      "minimum_confidence": 0.1,
+      "required_sections": []
+    },
+    {
+      "case_id": "dup",
+      "persona": "teacher",
+      "goal": "Explain ownership",
+      "require_accept_verification": false,
+      "minimum_confidence": 0.1,
+      "required_sections": []
+    }
+  ]
+}"#,
+        )
+        .expect("write temp suite");
+
+        let result = load_eval_suite(&path);
+        let _ = fs::remove_file(&path);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
